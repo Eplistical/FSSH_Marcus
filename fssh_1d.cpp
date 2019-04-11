@@ -56,6 +56,7 @@ vector<double> Fx(2);
 vector< complex<double> > dcx(4);
 double random_force = 0.0;
 string integrator = "vv";
+int random_seed = 0;
 
 inline bool argparse(int argc, char** argv) 
 {
@@ -72,6 +73,7 @@ inline bool argparse(int argc, char** argv)
         ("dt", po::value<double>(&dt), "single time step")
         ("enable_hop", po::value<bool>(&enable_hop), "enable hopping")
         ("integrator", po::value<string>(&integrator), "integrator to use. vv or lgv")
+        ("random_seed", po::value<int>(&random_seed), "random seed. Default 0")
         ;
     po::variables_map vm; 
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -361,7 +363,8 @@ void fssh() {
                             " V = ", V, 
                             " init_x = ", init_x, " init_px = ", init_px, 
                             " sigma_x = ", sigma_x, " sigma_px = ", sigma_px, 
-                            " init_s = ", init_s
+                            " init_s = ", init_s,
+                            " random_seed = ", random_seed
                         );
                 ioer::tabout('#', "t", "n0d", "n1d", "KE", "PE", "Etot");
             }
@@ -416,7 +419,7 @@ int main(int argc, char** argv) {
         if (argparse(argc, argv) == false) {
             return 0;
         }
-        randomer::seed(0);
+        randomer::seed(random_seed);
         timer::tic();
         fssh();
         ioer::info("# ", timer::toc());
