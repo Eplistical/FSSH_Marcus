@@ -40,8 +40,8 @@ double init_x = 0.0;
 double init_px = 0.0;
 double init_s = 0.0;
 
-//const double sigma_x = 0.0; //sqrt(kT / mass / omega / omega); 
-const double sigma_x = sqrt(kT / mass / omega / omega); 
+const double sigma_x = 0.0;
+//const double sigma_x = sqrt(kT / mass / omega / omega); 
 const double sigma_px = sqrt(kT * mass);
 
 int Nstep = 1000000;
@@ -55,6 +55,7 @@ vector<double> eva(2);
 vector<double> Fx(2);
 vector< complex<double> > dcx(4);
 double random_force = 0.0;
+string integrator = "vv";
 
 inline bool argparse(int argc, char** argv) 
 {
@@ -70,6 +71,7 @@ inline bool argparse(int argc, char** argv)
         ("output_step", po::value<int>(&output_step), "# step for output")
         ("dt", po::value<double>(&dt), "single time step")
         ("enable_hop", po::value<bool>(&enable_hop), "enable hopping")
+        ("integrator", po::value<string>(&integrator), "integrator to use. vv or lgv")
         ;
     po::variables_map vm; 
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -78,6 +80,7 @@ inline bool argparse(int argc, char** argv)
         std::cout << desc << "\n";
         return false;
     }
+    misc::crasher::confirm(integrator == "vv" or integrator == "lgv", "Invalid integrator");
     return true;
 }
 
@@ -163,6 +166,11 @@ void sys(const state_t& state, state_t& state_dot, const double /* t */) {
 }
 
 void integrator_Langevin(state_t& state, const double dt) {
+    static bool firsttime = true;
+    if (firsttime) {
+        ioer::info("# INTEGRATOR: LGV");
+        firsttime = false;
+    }
     // state = x, vx, c0, c1, s
     double x = state[0].real();
     double vx = state[1].real();
@@ -205,6 +213,11 @@ void integrator_Langevin(state_t& state, const double dt) {
 }
 
 void integrator_VV(state_t& state, const double dt) {
+    static bool firsttime = true;
+    if (firsttime) {
+        ioer::info("# INTEGRATOR: VV");
+        firsttime = false;
+    }
     // state = x, vx, c0, c1, s
     double x = state[0].real();
     double vx = state[1].real();
@@ -306,8 +319,12 @@ void fssh() {
                 random_force = randomer::normal(0.0, sqrt(2 * fric_gamma * kT / dt));
                 rk4.do_step(sys, state[itraj], istep * dt, dt);
                 */
-                integrator_Langevin(state[itraj], dt);
-                //integrator_VV(state[itraj], dt);
+                if (integrator == "vv") {
+                    integrator_VV(state[itraj], dt);
+                }
+                else if (integrator == "lgv") {
+                    integrator_Langevin(state[itraj], dt);
+                }
                 // save last evt
                 lastevt_save[itraj] = move(lastevt);
             }
@@ -341,6 +358,7 @@ void fssh() {
             if (istep == 0) {
                 // para & header
                 ioer::info("# FSSH para: ", " Ntraj = ", Ntraj, " Nstep = ", Nstep, " dt = ", dt, " output_step = ", output_step,
+                            " V = ", V, 
                             " init_x = ", init_x, " init_px = ", init_px, 
                             " sigma_x = ", sigma_x, " sigma_px = ", sigma_px, 
                             " init_s = ", init_s
