@@ -31,7 +31,7 @@ const complex<double> zI(0.0, 1.0);
 const double mass = 2000.0;
 const double kT = 0.01;
 const double omega = 5e-4;
-const double x1 = 16.0;
+const double g = 16.0;
 const double dG0 = -0.002;
 const double fric_gamma = 2.0 * mass * omega;
 
@@ -89,7 +89,7 @@ inline bool argparse(int argc, char** argv)
 vector< complex<double> > cal_H(const double x) {
     vector< complex<double> > H(4);
     H[0+0*2] = 0.5 * mass * omega * omega * x * x;
-    H[1+1*2] = 0.5 * mass * omega * omega * (x - x1) * (x - x1) + dG0;
+    H[1+1*2] = 0.5 * mass * omega * omega * (x - g) * (x - g) + dG0;
     H[1+0*2] = V;
     H[0+1*2] = conj(H[1+0*2]);
     return H;
@@ -98,7 +98,7 @@ vector< complex<double> > cal_H(const double x) {
 vector< complex<double> > cal_nablaH(const double x) {
     vector< complex<double> > nablaH(4);
     nablaH[0+0*2] = mass * omega * omega * x;
-    nablaH[1+1*2] = mass * omega * omega * (x - x1);
+    nablaH[1+1*2] = mass * omega * omega * (x - g);
     nablaH[1+0*2] = 0.0;
     nablaH[0+1*2] = 0.0;
     return nablaH;
@@ -360,6 +360,9 @@ void fssh() {
             if (istep == 0) {
                 // para & header
                 ioer::info("# FSSH para: ", " Ntraj = ", Ntraj, " Nstep = ", Nstep, " dt = ", dt, " output_step = ", output_step,
+                            " mass = ", mass, " kT = ", kT, 
+                            " omega = ", omega, " g = ", g, " dG0 = ", dG0, 
+                            " fric_gamma = ", fric_gamma, 
                             " V = ", V, 
                             " init_x = ", init_x, " init_px = ", init_px, 
                             " sigma_x = ", sigma_x, " sigma_px = ", sigma_px, 
