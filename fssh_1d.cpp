@@ -267,15 +267,25 @@ int hopper(state_t& state) {
     if (randomer::rand() < g) {
         double tmp = vx * vx - 2 * dE / mass;
         if (tmp > 0.0) {
+            // hop accepted, modify p and s
             double vnew = sqrt(tmp);
             state[1] = vnew * (vx < 0.0 ? -1 : 1); 
             state[4].real(1.0 - s); 
             return (s == 0) ? HOP_UP : HOP_DN;
         }
         else {
-            return HOP_FR;
+            // hop frustrated, momentum reversal
+            double F0d01 = Fx[0] * dcx[0+1*2].real();
+            double F1d01 = Fx[1] * dcx[0+1*2].real();
+            double vxd01 = vx * dcx[0+1*2].real();
+            if (F0d01 * F1d01 < 0.0 and vxd01 * F1d01 < 0.0)
+            {
+                state[1].real(-vx);
+            }
+            return HOP_FR; 
         }
     }   
+    // hop rejected
     return HOP_RJ;
 }
 
