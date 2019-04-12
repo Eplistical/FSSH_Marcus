@@ -375,7 +375,7 @@ void fssh() {
             n1d /= Ntraj;
             KE /= Ntraj;
             PE /= Ntraj;
-            ioer::tabout('#', istep * dt, n0d, n1d, KE, PE, KE + PE);
+            ioer::tabout("", istep * dt, n0d, n1d, KE, PE, KE + PE);
 
             // check end
             bool end_flag = all_of(state.begin(), state.end(), check_end);
