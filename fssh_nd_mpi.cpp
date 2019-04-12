@@ -33,7 +33,6 @@ int ndim = 2;
 int edim = 2;
 
 double kT = 0.01;
-double fric_gamma = 0.0;
 
 vector<double> mass { 2000.0, 2000.0};
 vector<double> init_r { 0.0, 0.0};
@@ -42,6 +41,7 @@ vector<double> sigma_r { 0.0, 0.0 };
 vector<double> sigma_p = sqrt(kT * mass);
 vector<double> init_s { 1.0, 0.0 };
 vector<double> potential_params;
+vector<double> fric_gamma = 2.0 * mass * param_omega;
 
 
 double dt = 0.1;
@@ -76,7 +76,6 @@ bool argparse(int argc, char** argv)
         ("sigma_r", po::value<decltype(sigma_r)>(&sigma_r)->multitoken(), "sigma_r vector")
         ("sigma_p", po::value<decltype(sigma_p)>(&sigma_p)->multitoken(), "sigma_p vector")
         ("init_s", po::value<decltype(init_s)>(&init_s)->multitoken(), "init_s vector")
-        ("fric_gamma", po::value<decltype(fric_gamma)>(&fric_gamma), "nuclear friction gamma")
         ("potential_params", po::value<decltype(potential_params)>(&potential_params)->multitoken(), "potential_params vector")
         ("testmode", po::value<decltype(testmode)>(&testmode), "run test mode")
         ("seed", po::value<decltype(seed)>(&seed), "random seed")
@@ -185,7 +184,10 @@ void VV_integrator(state_t& state, const vector<double>& mass, const double t, c
 
     // nuclear part -- VV integrator
     vector<double> force(ndim);
-    const vector<double> random_force = randomer::vnormal(ndim, 0.0, sqrt(2.0 * fric_gamma * kT / dt));
+    vector<double> random_force(ndim);
+    for (int i(0); i < ndim; ++i) {
+        random_force[i] = randomer::normal(0.0, sqrt(2.0 * fric_gamma[i] * kT / dt));
+    }
 
     complex<double> vdotdc(0.0, 0.0);
     for (int k(0); k < ndim; ++k) {
@@ -198,7 +200,7 @@ void VV_integrator(state_t& state, const vector<double>& mass, const double t, c
         // Berry force
         force[i] += 2 * (dc[i][s+(1-s)*edim] * vdotdc).imag();
         // friction & random force
-        force[i] += -fric_gamma * p[i] + random_force[i];
+        force[i] += -fric_gamma[i] * p[i] + random_force[i];
     }
     p += half_dt * force;
 
@@ -217,7 +219,7 @@ void VV_integrator(state_t& state, const vector<double>& mass, const double t, c
         // Berry force
         force[i] += 2 * (dc[i][s+(1-s)*edim] * vdotdc).imag();
         // friction & random force
-        force[i] += -fric_gamma * p[i] + random_force[i];
+        force[i] += -fric_gamma[i] * p[i] + random_force[i];
     }
     p += half_dt * force;
 

@@ -1,7 +1,7 @@
 CXX = g++ 
 MPICXX = mpicxx
 OPT = -O3
-LIBS = -lboost_program_options -lfftw3 -lopenblas -llapack -lpthread -lgfortran 
+LIBS += -lboost_program_options -lfftw3 -lopenblas -llapack -lpthread -lgfortran 
 
 all : fssh_1d fssh_nd_mpi
 
