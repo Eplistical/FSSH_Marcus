@@ -162,9 +162,7 @@ void VV_integrator(state_t& state, const vector<double>& mass, const double t, c
     const double half_dt = 0.5 * dt;
 
     // electronic part -- RK4
-
     cal_info_nume(r, eva, dc, F, lastevt);
-
     vector< complex<double> > rk4_mat(edim * edim, 0.0);
     for (int j(0); j < edim; ++j) {
         for (int k(0); k < edim; ++k) {
@@ -266,7 +264,6 @@ int hopper_2state(state_t& state, const vector<double>& mass)
     const int from = s;
     const int to = 1 - s;
 
-
     // calc hop prob
     complex<double> vd = 0.0;
     for (int i(0); i < ndim; ++i) {
@@ -274,7 +271,6 @@ int hopper_2state(state_t& state, const vector<double>& mass)
     }
     double g = -2 * dt * (c[from] * conj(c[to]) * vd).real() / (c[from] * conj(c[from])).real();
     double dE = eva[to] - eva[from];
-
 
     // random number
     if (randomer::rand() < g) {
@@ -535,8 +531,10 @@ void fssh_nd_mpi() {
     for (int istep(0); istep < Nstep; ++istep) {
         for (int itraj(0); itraj < my_Ntraj; ++itraj) {
             if (check_end(state[itraj]) == false) {
-                // assign last evt
+                // calc info
                 lastevt = move(lastevt_save[itraj]);
+                // integrate t -> t + dt
+                integrator(state[itraj], mass, istep * dt, dt);
                 // hopper
                 if (enable_hop) {
                     int hopflag = hopper(state[itraj], mass);
@@ -548,8 +546,6 @@ void fssh_nd_mpi() {
                         default : break;
                     }
                 }
-                // integrate t -> t + dt
-                integrator(state[itraj], mass, istep * dt, dt);
                 // save lastevt
                 lastevt_save[itraj] = move(lastevt);
             }
@@ -617,7 +613,8 @@ void fssh_nd_mpi() {
                 " sigma_r = ", sigma_r, " sigma_p = ", sigma_p, 
                 " init_s = ", init_s,
                 " fric_gamma = ", fric_gamma,
-                " output_step = ", output_step
+                " output_step = ", output_step,
+                " enable_hop = ", enable_hop
                 );
         // Output header
         ioer::tabout(
