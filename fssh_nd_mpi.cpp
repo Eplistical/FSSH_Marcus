@@ -51,6 +51,7 @@ int Ntraj = 2000;
 int seed = 0;
 
 bool testmode = false;
+bool enable_hop = true;
 
 vector<double> eva;
 vector< vector< complex<double> > > dc;
@@ -78,6 +79,7 @@ bool argparse(int argc, char** argv)
         ("init_s", po::value<decltype(init_s)>(&init_s)->multitoken(), "init_s vector")
         ("potential_params", po::value<decltype(potential_params)>(&potential_params)->multitoken(), "potential_params vector")
         ("testmode", po::value<decltype(testmode)>(&testmode), "run test mode")
+        ("enable_hop", po::value<decltype(enable_hop)>(&enable_hop), "enable hopper")
         ("seed", po::value<decltype(seed)>(&seed), "random seed")
         ;
     po::variables_map vm; 
@@ -190,8 +192,8 @@ void VV_integrator(state_t& state, const vector<double>& mass, const double t, c
     }
 
     complex<double> vdotdc(0.0, 0.0);
-    for (int k(0); k < ndim; ++k) {
-        vdotdc += p[k] / mass[k] * dc[k][(1-s)+s*edim];
+    for (int i(0); i < ndim; ++i) {
+        vdotdc += p[i] / mass[i] * dc[i][(1-s)+s*edim];
     }
 
     for (int i(0); i < ndim; ++i) {
@@ -209,8 +211,8 @@ void VV_integrator(state_t& state, const vector<double>& mass, const double t, c
     cal_info_nume(r, eva, dc, F, lastevt);
 
     vdotdc = complex<double>(0.0, 0.0);
-    for (int k(0); k < ndim; ++k) {
-        vdotdc += p[k] / mass[k] * dc[k][(1-s)+s*edim];
+    for (int i(0); i < ndim; ++i) {
+        vdotdc += p[i] / mass[i] * dc[i][(1-s)+s*edim];
     }
 
     for (int i(0); i < ndim; ++i) {
@@ -535,17 +537,19 @@ void fssh_nd_mpi() {
             if (check_end(state[itraj]) == false) {
                 // assign last evt
                 lastevt = move(lastevt_save[itraj]);
+                // hopper
+                if (enable_hop) {
+                    int hopflag = hopper(state[itraj], mass);
+                    switch (hopflag) {
+                        case HOP_UP : { hopup += 1.0; hop_count[itraj] += 1.0; break; }
+                        case HOP_DN : { hopdn += 1.0; hop_count[itraj] += 1.0; break; }
+                        case HOP_FR : { hopfr += 1.0; break; }
+                        case HOP_RJ : { hoprj += 1.0; break; }
+                        default : break;
+                    }
+                }
                 // integrate t -> t + dt
                 integrator(state[itraj], mass, istep * dt, dt);
-                // hopper
-                int hopflag = hopper(state[itraj], mass);
-                switch (hopflag) {
-                    case HOP_UP : { hopup += 1.0; hop_count[itraj] += 1.0; break; }
-                    case HOP_DN : { hopdn += 1.0; hop_count[itraj] += 1.0; break; }
-                    case HOP_FR : { hopfr += 1.0; break; }
-                    case HOP_RJ : { hoprj += 1.0; break; }
-                    default : break;
-                }
                 // save lastevt
                 lastevt_save[itraj] = move(lastevt);
             }
