@@ -28,14 +28,16 @@ using boost::math::erf;
 using state_t = vector< complex<double> >;
 const complex<double> zI(0.0, 1.0);
 
-const double mass = 2000.0;
-const double kT = 0.01;
-const double omega = 5e-4;
-const double g = 16.0;
-const double dG0 = -0.002;
-const double fric_gamma = 2.0 * mass * omega;
+const double mass = 1.0;
+const double kT = 9.5e-4;
+const double omega = 3.5e-4;
+const double Er = 0.0239;
+const double M = sqrt(0.5 * Er * mass * omega * omega);
+const double g = 2.0 * M / mass / omega / omega;
+const double dG0 = -0.015;
+const double fric_gamma = 0.0024; // 2 * mass * omega;
 
-double V = 0.005;
+double V = 1.49e-5;
 double init_x = 0.0;
 double init_px = 0.0;
 double init_s = 0.0;
@@ -44,10 +46,10 @@ const double sigma_x = 0.0;
 //const double sigma_x = sqrt(kT / mass / omega / omega); 
 const double sigma_px = sqrt(kT * mass);
 
-int Nstep = 1000000;
-double dt = 0.1;
+int Nstep = 40000;
+double dt = 2.5;
 int output_step = 100;
-int Ntraj = 10000;
+int Ntraj = 5000;
 bool enable_hop = true;
 
 vector< complex<double> > lastevt;
@@ -56,7 +58,7 @@ vector<double> Fx(2);
 vector< complex<double> > dcx(4);
 double random_force = 0.0;
 string integrator = "vv";
-int random_seed = 0;
+int seed = 0;
 
 inline bool argparse(int argc, char** argv) 
 {
@@ -73,7 +75,7 @@ inline bool argparse(int argc, char** argv)
         ("dt", po::value<double>(&dt), "single time step")
         ("enable_hop", po::value<bool>(&enable_hop), "enable hopping")
         ("integrator", po::value<string>(&integrator), "integrator to use. vv or lgv")
-        ("random_seed", po::value<int>(&random_seed), "random seed. Default 0")
+        ("seed", po::value<int>(&seed), "random seed. Default 0")
         ;
     po::variables_map vm; 
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -371,13 +373,13 @@ void fssh() {
                 // para & header
                 ioer::info("# FSSH para: ", " Ntraj = ", Ntraj, " Nstep = ", Nstep, " dt = ", dt, " output_step = ", output_step,
                             " mass = ", mass, " kT = ", kT, 
-                            " omega = ", omega, " g = ", g, " dG0 = ", dG0, 
+                            " omega = ", omega, " g = ", g,  " Er = ", Er, " dG0 = ", dG0, 
                             " fric_gamma = ", fric_gamma, 
                             " V = ", V, 
                             " init_x = ", init_x, " init_px = ", init_px, 
                             " sigma_x = ", sigma_x, " sigma_px = ", sigma_px, 
                             " init_s = ", init_s,
-                            " random_seed = ", random_seed
+                            " seed = ", seed
                         );
                 ioer::tabout('#', "t", "n0d", "n1d", "KE", "PE", "Etot");
             }
@@ -406,7 +408,7 @@ void fssh() {
 
 void check() {
     // check surf
-    for (double x = -10; x < 30; x += 0.01) {
+    for (double x = -1000; x < 1500; x += 10.0) {
         cal_info(x);
         ioer::tabout(x, eva, Fx, abs(dcx) / 10);
     }
@@ -432,7 +434,7 @@ int main(int argc, char** argv) {
         if (argparse(argc, argv) == false) {
             return 0;
         }
-        randomer::seed(random_seed);
+        randomer::seed(seed);
         timer::tic();
         fssh();
         ioer::info("# ", timer::toc());
