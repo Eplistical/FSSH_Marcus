@@ -37,19 +37,19 @@ const int edim = 2;
 
 const double mass = 1.0;
 const double kT = 9.5e-4;
-const double omega = 3.5e-4;
+const double omega = 4.375e-5;
 const double Er = 0.0239;
 const double M = sqrt(0.5 * Er * mass * omega * omega);
 const double g = 2.0 * M / mass / omega / omega;
-const double dG0 = -0.015;
-const double fric_gamma = 0.0024; 
+const double dG0 = -0.018;
+const double fric_gamma = 1.5e-4; // 0.0024; 
 
 const double sigma_x = 0.0;
 //const double sigma_x = sqrt(kT / mass / omega / omega); 
-const double sigma_px = sqrt(kT * mass);
+const double sigma_p = sqrt(kT * mass);
 
 // tunable parameters
-double V = 1.49e-5;
+double V = 2.5e-5;
 double init_x = 0.0;
 double init_p = 0.0;
 double init_s = 0.0;
@@ -59,6 +59,7 @@ int Nstep = 10000;
 int output_step = 100;
 int Ntraj = 5000;
 bool enable_hop = true;
+bool enable_deco = true;
 int seed = 0;
 
 // cache
@@ -85,6 +86,7 @@ bool argparse(int argc, char** argv)
         ("output_step", po::value<int>(&output_step), "# step for output")
         ("dt", po::value<double>(&dt), "single time step")
         ("enable_hop", po::value<bool>(&enable_hop), "enable hopping")
+        ("enable_deco", po::value<bool>(&enable_deco), "enable decoherence")
         ("seed", po::value<int>(&seed), "random seed. Default 0")
         ;
     po::variables_map vm; 
@@ -102,11 +104,10 @@ void init_state(state_t& state) {
     state.resize(13, matrixop::ZEROZ);
 
     state[0].real(randomer::normal(init_x, sigma_x)); 
-    state[1].real(randomer::normal(init_p, sigma_px)); 
+    state[1].real(randomer::normal(init_p, sigma_p)); 
     state[2].real(sqrt(1.0 - init_s));
     state[3].real(sqrt(init_s));
     state[4].real((randomer::rand() < init_s) ? 1.0 : 0.0);
-
 }
 
 bool check_end(const state_t& state) {
@@ -214,9 +215,30 @@ int hopper(state_t& state) {
         double tmp = p * p - 2 * mass * dE;
         if (tmp > 0.0) {
             // hop accepted
+            // new momentum
             double pnew = sqrt(tmp);
+            // moments
+            rmom.assign(edim * edim, 0.0);
+
+            pmom[1-s+(1-s)*edim] = 0.0;
+            if (abs(c[s]) < 1e-10) {
+                pmom[s+s*edim] = 0.0;
+            }
+            else {
+                tmp = pnew * pnew - 2 * mass * dE;
+                if (tmp <= 0.0) {
+                    pmom[s+s*edim] = 0.0;
+                }
+                else {
+                    pmom[s+s*edim] = (sqrt(tmp) - pnew) * (c[s] * c[1-s]).real();
+                }
+            }
+
             state[1] = pnew * (p < 0.0 ? -1 : 1); 
             state[6].real(1.0 - s); 
+            copy(rmom.begin(), rmom.end(), state.begin() + 5);
+            copy(rmom.begin(), rmom.end(), state.begin() + 9);
+
             return (s == 0) ? HOP_UP : HOP_DN;
         }
         else {
@@ -236,12 +258,54 @@ int hopper(state_t& state) {
     return HOP_RJ;
 }
 
+void decoherencer(state_t& state, const double xi = 1.0) {
+    // extract info
+    // state = r(1), p(1), c(2), s(1), rmom(4), pmom(4)
+    double x = state[0].real();
+    double p = state[1].real();
+    vector< complex<double> > c(state.begin() + 2, state.begin() + 4);
+    int s = static_cast<int>(state[4].real());
+    vector< complex<double> > rmom(state.begin() + 5, state.begin() + 9);
+    vector< complex<double> > pmom(state.begin() + 9, state.begin() + 13);
+
+    double Pcollapse, Preset;
+    int const n = 1 - s;
+
+    Pcollapse = dt * ( 0.5 * (F[n+n*edim] - F[s+s*edim]) * rmom[n+n*edim] - 2.0 * xi * abs(F[s+n*edim] * rmom[n+n*edim]) ).real();
+    Preset = dt * ( -0.5 * (F[n+n*edim] - F[s+s*edim] * rmom[n+n*edim]) ).real();
+
+    if (randomer::rand() < Pcollapse) {
+        c[s] = 0.0;
+        c[n] = 1.0;
+        for (int j(0); j < edim; ++j) {
+            rmom[j+n*edim] = 0.0;
+            rmom[n+j*edim] = 0.0;
+            pmom[j+n*edim] = 0.0;
+            pmom[n+j*edim] = 0.0;
+        }
+        copy(c.begin(), c.end(), state.begin() + 2);
+        copy(rmom.begin(), rmom.end(), state.begin() + 5);
+        copy(rmom.begin(), rmom.end(), state.begin() + 9);
+    }
+    if (randomer::rand() < Preset) {
+        for (int j(0); j < edim; ++j) {
+            rmom[j+n*edim] = 0.0;
+            rmom[n+j*edim] = 0.0;
+            pmom[j+n*edim] = 0.0;
+            pmom[n+j*edim] = 0.0;
+        }
+        copy(rmom.begin(), rmom.end(), state.begin() + 5);
+        copy(rmom.begin(), rmom.end(), state.begin() + 9);
+    }
+}
+
 void afssh() {
     // initialize
     vector<state_t> state(Ntraj);
     for (auto& st : state) {
         init_state(st);
     }
+    set_potenial_params(vector<double> { mass, omega, g, dG0, V });
     // statistics
     double hopup = 0.0, hopdn = 0.0, hopfr = 0.0, hoprj = 0.0;
     vector<int> hop_rec(Ntraj, 0);
@@ -268,6 +332,10 @@ void afssh() {
                         default : break;
                     }
                 }
+                // decoherence
+                if (enable_deco) {
+                    decoherencer(state[itraj]);
+                }
                 // propagate
                 integrator(state[itraj], dt);
                 // save last evt
@@ -276,6 +344,49 @@ void afssh() {
         }
         if (istep % output_step == 0) {
             // data analysis
+            n0d = n1d = 0.0;
+            KE = PE = 0.0;
+            for_each(state.begin(), state.end(), 
+                    [&n0d, &n1d, &KE, &PE](const state_t& st) { 
+                        double x = st[0].real();
+                        double p = st[1].real();
+                        vector< complex<double> > c(st.begin() + 2, st.begin() + 4);
+                        int s = static_cast<int>(st[4].real());
+
+                        // diabatic population -- Method 3 from Landry 2013 communication 
+                        vector<double> eva;
+                        vector< complex<double> > U;
+                        matrixop::hdiag(cal_H(x), eva, U);
+
+                        n0d += pow(abs(U[0+s*2]), 2) + 2 * (U[0+0*2] * c[0] * conj(c[1]) * conj(U[0+1*2])).real();
+                        n1d += pow(abs(U[1+s*2]), 2) + 2 * (U[1+0*2] * c[0] * conj(c[1]) * conj(U[1+1*2])).real();
+
+                        // energy
+                        KE += p * p / mass / 2;
+                        PE += eva[s]; 
+                    });
+
+            // output
+            if (istep == 0) {
+                // para & header
+                output_potential_params();
+                ioer::info("# FSSH para: ", " Ntraj = ", Ntraj, " Nstep = ", Nstep, " dt = ", dt, " output_step = ", output_step,
+                            " mass = ", mass, " kT = ", kT, 
+                            " omega = ", omega, " g = ", g,  " Er = ", Er, " dG0 = ", dG0, 
+                            " fric_gamma = ", fric_gamma, 
+                            " V = ", V, 
+                            " init_x = ", init_x, " init_p = ", init_p, 
+                            " sigma_x = ", sigma_x, " sigma_p = ", sigma_p, 
+                            " init_s = ", init_s,
+                            " seed = ", seed
+                        );
+                ioer::tabout('#', "t", "n0d", "n1d", "KE", "PE", "Etot");
+            }
+            n0d /= Ntraj;
+            n1d /= Ntraj;
+            KE /= Ntraj;
+            PE /= Ntraj;
+            ioer::tabout("", istep * dt, n0d, n1d, KE, PE, KE + PE);
         }
 
     }
