@@ -53,6 +53,7 @@ int output_step = 100;
 int Ntraj = 5000;
 bool enable_hop = true;
 bool enable_deco = true;
+bool enable_prev = true;
 int seed = 0;
 
 // cache
@@ -79,6 +80,7 @@ bool argparse(int argc, char** argv)
         ("dt", po::value<double>(&dt), "single time step")
         ("enable_hop", po::value<bool>(&enable_hop), "enable hopping")
         ("enable_deco", po::value<bool>(&enable_deco), "enable decoherence")
+        ("enable_prev", po::value<bool>(&enable_prev), "enable momentum reversal")
         ("seed", po::value<int>(&seed), "random seed. Default 0")
         ;
     po::variables_map vm; 
@@ -130,7 +132,6 @@ void integrator(state_t& state, const double dt) {
 
     double v = p / mass;
 
-    /*
     vector< complex<double> > k1, k2, k3, k4; // c
 
     k1 = dt * (-zI * c * eva - v * matrixop::matvec(dc, c));
@@ -140,25 +141,8 @@ void integrator(state_t& state, const double dt) {
 
     c += k1 / 6.0 + k2 / 3.0 + k3 / 3.0 + k4 / 6.0;
     copy(c.begin(), c.end(), state.begin() + 2);
-    */
-
-    complex<double> k1,k2,k3,k4;
-    complex<double> l1,l2,l3,l4;
-    k1 = dt * (-zI * c[0] * eva[0] - c[1] * (v * dc[0+1*2]));
-    l1 = dt * (-zI * c[1] * eva[1] - c[0] * (v * dc[1+0*2]));
-    k2 = dt * (-zI * (c[0] + 0.5 * k1) * eva[0] - (c[1] + 0.5 * l1) * (v * dc[0+1*2]));
-    l2 = dt * (-zI * (c[1] + 0.5 * l1) * eva[1] - (c[0] + 0.5 * k1) * (v * dc[1+0*2]));
-    k3 = dt * (-zI * (c[0] + 0.5 * k2) * eva[0] - (c[1] + 0.5 * l2) * (v * dc[0+1*2]));
-    l3 = dt * (-zI * (c[1] + 0.5 * l2) * eva[1] - (c[0] + 0.5 * k2) * (v * dc[1+0*2]));
-    k4 = dt * (-zI * (c[0] + k3) * eva[0] - (c[1] + l3) * (v * dc[0+1*2]));
-    l4 = dt * (-zI * (c[1] + l3) * eva[1] - (c[0] + k3) * (v * dc[1+0*2]));
-
-    state[2] += k1 / 6.0 + k2 / 3.0 + k3 / 3.0 + k4 / 6.0;
-    state[3] += l1 / 6.0 + l2 / 3.0 + l3 / 3.0 + l4 / 6.0;
 
     // moments part, RK4
-
-    /*
     if (enable_deco) {
         vector< complex<double> > l1, l2, l3, l4; // rmom
         vector< complex<double> > m1, m2, m3, m4; // pmom
@@ -205,7 +189,6 @@ void integrator(state_t& state, const double dt) {
         copy(rmom.begin(), rmom.end(), state.begin() + 5);
         copy(pmom.begin(), pmom.end(), state.begin() + 9);
     }
-    */
 
     // nuclear part, VV
 
@@ -236,14 +219,10 @@ int hopper(state_t& state) {
         double tmp = p * p - 2 * mass * dE;
         if (tmp > 0.0) {
             // hop accepted
-            // p & s
-            //ioer::info("hop! before: PE = ", eva[s], " KE = ", p * p / 2 / mass, " Etot = ", eva[s] + p * p / 2/ mass);
             double pnew = sqrt(tmp);
             state[1] = pnew * (p < 0.0 ? -1 : 1); 
             state[4].real(1.0 - s); 
-            //ioer::info("      after: PE = ", eva[1-s], " KE = ", pnew * pnew / 2 / mass, " Etot = ", eva[1-s] + pnew * pnew / 2/ mass);
 
-            /*
             // moments
             if (enable_deco) {
                 rmom.assign(edim * edim, 0.0);
@@ -265,22 +244,21 @@ int hopper(state_t& state) {
                 copy(rmom.begin(), rmom.end(), state.begin() + 5);
                 copy(rmom.begin(), rmom.end(), state.begin() + 9);
             }
-            */
 
             return (s == 0) ? HOP_UP : HOP_DN;
         }
         else {
             // hop frustrated
-            /*
-            double F0d01 = (F[0+0*edim] * dc[0+1*edim]).real();
-            double F1d01 = (F[1+1*edim] * dc[0+1*edim]).real();
-            double vd01 = p / mass * dc[0+1*2].real();
-            if (F0d01 * F1d01 < 0.0 and vd01 * F1d01 < 0.0)
-            {
-                // momentum reversal
-                state[1] *= -1.0;
+            if (enable_prev) {
+                double F0d01 = (F[0+0*edim] * dc[0+1*edim]).real();
+                double F1d01 = (F[1+1*edim] * dc[0+1*edim]).real();
+                double vd01 = p / mass * dc[0+1*2].real();
+                if (F0d01 * F1d01 < 0.0 and vd01 * F1d01 < 0.0)
+                {
+                    // momentum reversal
+                    state[1] *= -1.0;
+                }
             }
-            */
             return HOP_FR; 
         }
     }   
