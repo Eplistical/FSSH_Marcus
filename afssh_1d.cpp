@@ -64,7 +64,7 @@ int seed = 0;
 
 // cache
 vector<double> eva(edim);
-vector< complex<double> > lastevt(edim * edim);
+vector< complex<double> > lastevt;
 vector< complex<double> > F(edim * edim);
 vector< complex<double> > dc(edim * edim);
 
@@ -235,7 +235,7 @@ int hopper(state_t& state) {
             }
 
             state[1] = pnew * (p < 0.0 ? -1 : 1); 
-            state[6].real(1.0 - s); 
+            state[4].real(1.0 - s); 
             copy(rmom.begin(), rmom.end(), state.begin() + 5);
             copy(rmom.begin(), rmom.end(), state.begin() + 9);
 
