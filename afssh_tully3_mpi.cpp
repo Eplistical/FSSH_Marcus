@@ -15,6 +15,7 @@
 #include "boost/math/special_functions/erf.hpp"
 #include "boost/program_options.hpp"
 #include "tully3_potential.hpp"
+//#include "tully1_potential.hpp"
 
 
 // -- GLOBAL -- //
@@ -37,13 +38,9 @@ const int ndim = 1;
 const int edim = 2;
 
 const double mass = 2000.0;
-const double fric_gamma = 0.0;
-const double kT = 1e-3;
 
 const double sigma_x = 0.0;
-//const double sigma_x = sqrt(kT / mass / omega / omega); 
 const double sigma_p = 0.0;
-//const double sigma_p = sqrt(kT * mass);
 
 // tunable parameters
 double init_x = -12.0;
@@ -106,6 +103,7 @@ void init_state(state_t& state) {
 }
 
 bool check_end(const state_t& state) {
+    /*
     double x = state[0].real();
     double p = state[1].real();
     if (x < -15.0 and p < 0.0) {
@@ -114,6 +112,7 @@ bool check_end(const state_t& state) {
     if (x > 15.0 and p > 0.0) {
         return true;
     }
+    */
     return false;
 }
 
@@ -130,11 +129,8 @@ void integrator(state_t& state, const double dt) {
     // ele part, RK4
 
     double v = p / mass;
-    vector< complex<double> > Emat(edim * edim);
-    for (int i(0); i < edim; ++i) {
-        Emat[i+i*edim] = eva[i];
-    }
 
+    /*
     vector< complex<double> > k1, k2, k3, k4; // c
 
     k1 = dt * (-zI * c * eva - v * matrixop::matvec(dc, c));
@@ -144,57 +140,79 @@ void integrator(state_t& state, const double dt) {
 
     c += k1 / 6.0 + k2 / 3.0 + k3 / 3.0 + k4 / 6.0;
     copy(c.begin(), c.end(), state.begin() + 2);
+    */
+
+    complex<double> k1,k2,k3,k4;
+    complex<double> l1,l2,l3,l4;
+    k1 = dt * (-zI * c[0] * eva[0] - c[1] * (v * dc[0+1*2]));
+    l1 = dt * (-zI * c[1] * eva[1] - c[0] * (v * dc[1+0*2]));
+    k2 = dt * (-zI * (c[0] + 0.5 * k1) * eva[0] - (c[1] + 0.5 * l1) * (v * dc[0+1*2]));
+    l2 = dt * (-zI * (c[1] + 0.5 * l1) * eva[1] - (c[0] + 0.5 * k1) * (v * dc[1+0*2]));
+    k3 = dt * (-zI * (c[0] + 0.5 * k2) * eva[0] - (c[1] + 0.5 * l2) * (v * dc[0+1*2]));
+    l3 = dt * (-zI * (c[1] + 0.5 * l2) * eva[1] - (c[0] + 0.5 * k2) * (v * dc[1+0*2]));
+    k4 = dt * (-zI * (c[0] + k3) * eva[0] - (c[1] + l3) * (v * dc[0+1*2]));
+    l4 = dt * (-zI * (c[1] + l3) * eva[1] - (c[0] + k3) * (v * dc[1+0*2]));
+
+    state[2] += k1 / 6.0 + k2 / 3.0 + k3 / 3.0 + k4 / 6.0;
+    state[3] += l1 / 6.0 + l2 / 3.0 + l3 / 3.0 + l4 / 6.0;
 
     // moments part, RK4
 
-    vector< complex<double> > l1, l2, l3, l4; // rmom
-    vector< complex<double> > m1, m2, m3, m4; // pmom
-    vector< complex<double> > TR, TP, dF, sigma, dFsigma;
+    /*
+    if (enable_deco) {
+        vector< complex<double> > l1, l2, l3, l4; // rmom
+        vector< complex<double> > m1, m2, m3, m4; // pmom
+        vector< complex<double> > TR, TP, dF, sigma, dFsigma;
 
-    dF = F - F[s+s*edim] * matrixop::eye(edim);
-    sigma.resize(edim * edim);
-    for (int j(0); j < edim; ++j) {
-        for (int k(0); k < edim; ++k) {
-            sigma[j+k*edim] = c[j] * conj(c[k]);
+        vector< complex<double> > Emat(edim * edim);
+        for (int i(0); i < edim; ++i) {
+            Emat[i+i*edim] = eva[i];
         }
+
+        dF = F - F[s+s*edim] * matrixop::eye(edim);
+        sigma.resize(edim * edim);
+        for (int j(0); j < edim; ++j) {
+            for (int k(0); k < edim; ++k) {
+                sigma[j+k*edim] = c[j] * conj(c[k]);
+            }
+        }
+        dFsigma = matrixop::anticommutator(dF, sigma);
+        
+
+        TR = -zI * matrixop::commutator(Emat, rmom) - v * matrixop::commutator(dc, rmom) + pmom / mass;
+        TP = -zI * matrixop::commutator(Emat, pmom) - v * matrixop::commutator(dc, pmom) + 0.5 * dFsigma;
+        l1 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
+        m1 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
+
+        TR = -zI * matrixop::commutator(Emat, rmom + 0.5 * l1) - v * matrixop::commutator(dc, rmom + 0.5 * l1) + (pmom + 0.5 * m1) / mass;
+        TP = -zI * matrixop::commutator(Emat, pmom + 0.5 * m1) - v * matrixop::commutator(dc, pmom + 0.5 * m1) + 0.5 * dFsigma;
+        l2 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
+        m2 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
+
+        TR = -zI * matrixop::commutator(Emat, rmom + 0.5 * l2) - v * matrixop::commutator(dc, rmom + 0.5 * l2) + (pmom + 0.5 * m2) / mass;
+        TP = -zI * matrixop::commutator(Emat, pmom + 0.5 * m2) - v * matrixop::commutator(dc, pmom + 0.5 * m2) + 0.5 * dFsigma;
+        l3 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
+        m3 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
+
+        TR = -zI * matrixop::commutator(Emat, rmom + l3) - v * matrixop::commutator(dc, rmom + l3) + (pmom + m3) / mass;
+        TP = -zI * matrixop::commutator(Emat, pmom + m3) - v * matrixop::commutator(dc, pmom + m3) + 0.5 * dFsigma;
+        l4 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
+        m4 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
+
+        rmom += l1 / 6.0 + l2 / 3.0 + l3 / 3.0 + l4 / 6.0;
+        pmom += m1 / 6.0 + m2 / 3.0 + m3 / 3.0 + m4 / 6.0;
+
+        copy(rmom.begin(), rmom.end(), state.begin() + 5);
+        copy(pmom.begin(), pmom.end(), state.begin() + 9);
     }
-    dFsigma = matrixop::anticommutator(dF, sigma);
-    
-
-    TR = -zI * matrixop::commutator(Emat, rmom) - v * matrixop::commutator(dc, rmom) + pmom / mass;
-    TP = -zI * matrixop::commutator(Emat, pmom) - v * matrixop::commutator(dc, pmom) + 0.5 * dFsigma;
-    l1 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-    m1 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-
-    TR = -zI * matrixop::commutator(Emat, rmom + 0.5 * l1) - v * matrixop::commutator(dc, rmom + 0.5 * l1) + (pmom + 0.5 * m1) / mass;
-    TP = -zI * matrixop::commutator(Emat, pmom + 0.5 * m1) - v * matrixop::commutator(dc, pmom + 0.5 * m1) + 0.5 * dFsigma;
-    l2 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-    m2 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-
-    TR = -zI * matrixop::commutator(Emat, rmom + 0.5 * l2) - v * matrixop::commutator(dc, rmom + 0.5 * l2) + (pmom + 0.5 * m2) / mass;
-    TP = -zI * matrixop::commutator(Emat, pmom + 0.5 * m2) - v * matrixop::commutator(dc, pmom + 0.5 * m2) + 0.5 * dFsigma;
-    l3 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-    m3 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-
-    TR = -zI * matrixop::commutator(Emat, rmom + l3) - v * matrixop::commutator(dc, rmom + l3) + (pmom + m3) / mass;
-    TP = -zI * matrixop::commutator(Emat, pmom + m3) - v * matrixop::commutator(dc, pmom + m3) + 0.5 * dFsigma;
-    l4 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-    m4 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-
-    rmom += l1 / 6.0 + l2 / 3.0 + l3 / 3.0 + l4 / 6.0;
-    pmom += m1 / 6.0 + m2 / 3.0 + m3 / 3.0 + m4 / 6.0;
-
-    copy(rmom.begin(), rmom.end(), state.begin() + 5);
-    copy(pmom.begin(), pmom.end(), state.begin() + 9);
-
+    */
 
     // nuclear part, VV
 
-    const double random_force = randomer::normal(0.0, sqrt(2 * fric_gamma * kT / dt));
-    p += 0.5 * dt * (F[s+s*edim].real() - fric_gamma * p + random_force);
+    p += 0.5 * dt * F[s+s*edim].real();
     x += dt * p / mass;
     cal_info_nume(x, eva, dc, F, lastevt);
-    p += 0.5 * dt * (F[s+s*edim].real() - fric_gamma * p + random_force);
+    p += 0.5 * dt * F[s+s*edim].real();
 
     state[0].real(x);
     state[1].real(p);
@@ -218,34 +236,42 @@ int hopper(state_t& state) {
         double tmp = p * p - 2 * mass * dE;
         if (tmp > 0.0) {
             // hop accepted
-            // new momentum
+            // p & s
+            //ioer::info("hop! before: PE = ", eva[s], " KE = ", p * p / 2 / mass, " Etot = ", eva[s] + p * p / 2/ mass);
             double pnew = sqrt(tmp);
-            // moments
-            rmom.assign(edim * edim, 0.0);
+            state[1] = pnew * (p < 0.0 ? -1 : 1); 
+            state[4].real(1.0 - s); 
+            //ioer::info("      after: PE = ", eva[1-s], " KE = ", pnew * pnew / 2 / mass, " Etot = ", eva[1-s] + pnew * pnew / 2/ mass);
 
-            pmom[1-s+(1-s)*edim] = 0.0;
-            if (abs(c[s]) < 1e-10) {
-                pmom[s+s*edim] = 0.0;
-            }
-            else {
-                tmp = pnew * pnew - 2 * mass * dE;
-                if (tmp <= 0.0) {
+            /*
+            // moments
+            if (enable_deco) {
+                rmom.assign(edim * edim, 0.0);
+
+                pmom[1-s+(1-s)*edim] = 0.0;
+                if (abs(c[s]) < 1e-10) {
                     pmom[s+s*edim] = 0.0;
                 }
                 else {
-                    pmom[s+s*edim] = (sqrt(tmp) - pnew) * (c[s] * c[1-s]).real();
+                    tmp = pnew * pnew - 2 * mass * dE;
+                    if (tmp <= 0.0) {
+                        pmom[s+s*edim] = 0.0;
+                    }
+                    else {
+                        pmom[s+s*edim] = (sqrt(tmp) - pnew) * (c[s] * c[1-s]).real();
+                    }
                 }
-            }
 
-            state[1] = pnew * (p < 0.0 ? -1 : 1); 
-            state[4].real(1.0 - s); 
-            copy(rmom.begin(), rmom.end(), state.begin() + 5);
-            copy(rmom.begin(), rmom.end(), state.begin() + 9);
+                copy(rmom.begin(), rmom.end(), state.begin() + 5);
+                copy(rmom.begin(), rmom.end(), state.begin() + 9);
+            }
+            */
 
             return (s == 0) ? HOP_UP : HOP_DN;
         }
         else {
             // hop frustrated
+            /*
             double F0d01 = (F[0+0*edim] * dc[0+1*edim]).real();
             double F1d01 = (F[1+1*edim] * dc[0+1*edim]).real();
             double vd01 = p / mass * dc[0+1*2].real();
@@ -254,6 +280,7 @@ int hopper(state_t& state) {
                 // momentum reversal
                 state[1] *= -1.0;
             }
+            */
             return HOP_FR; 
         }
     }   
@@ -380,7 +407,6 @@ void afssh_1d_mpi() {
                     [&n0t, &n1t, &n0r, &n1r, &KE, &PE](const state_t& st) { 
                         double x = st[0].real();
                         double p = st[1].real();
-                        vector< complex<double> > c(st.begin() + 2, st.begin() + 4);
                         int s = static_cast<int>(st[4].real());
 
                         if (p > 0.0) {
@@ -394,8 +420,12 @@ void afssh_1d_mpi() {
 
                         // energy
                         KE += p * p / mass / 2;
-                        PE += eva[s]; 
+
+                        vector<double> evatmp;
+                        matrixop::hdiag(cal_H(x), evatmp);
+                        PE += evatmp[s]; 
                     });
+
             const int irec = istep / output_step;
             record["n0t"][irec] = n0t;
             record["n1t"][irec] = n1t;
@@ -484,7 +514,8 @@ void afssh_1d_mpi() {
                     record["n1r"][irec] / Ntraj, 
                     record["KE"][irec] / Ntraj, 
                     record["PE"][irec] / Ntraj, 
-                    (record["KE"][irec] + record["PE"][irec]) / Ntraj
+                    (record["KE"][irec] + record["PE"][irec]) / Ntraj,
+                    (record["KE"][irec] + record["PE"][irec]) 
                     );
         }
 
