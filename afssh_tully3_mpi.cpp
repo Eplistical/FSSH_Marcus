@@ -477,7 +477,7 @@ void afssh_1d_mpi() {
 
         for (int irec = 0; irec < Nrec; ++irec) {
             ioer::tabout(
-                    "", irec * output_step * dt, 
+                    "#", irec * output_step * dt, 
                     record["n0t"][irec] / Ntraj, 
                     record["n1t"][irec] / Ntraj, 
                     record["n0r"][irec] / Ntraj, 
@@ -487,6 +487,17 @@ void afssh_1d_mpi() {
                     (record["KE"][irec] + record["PE"][irec]) / Ntraj
                     );
         }
+
+        ioer::tabout(
+                "", init_p,
+                record["n0t"][Nrec-1] / Ntraj, 
+                record["n1t"][Nrec-1] / Ntraj, 
+                record["n0r"][Nrec-1] / Ntraj, 
+                record["n1r"][Nrec-1] / Ntraj, 
+                record["KE"][Nrec-1] / Ntraj, 
+                record["PE"][Nrec-1] / Ntraj, 
+                (record["KE"][Nrec-1] + record["PE"][Nrec-1]) / Ntraj
+                );
 
         // output hop info
         ioer::info("# hop statistics: ");
