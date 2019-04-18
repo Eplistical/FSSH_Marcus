@@ -7,20 +7,18 @@ function exact_1d(xI, kxI, init_s)
     c2 = sqrt(init_s);
 
     N = 2;
-    L = 128;
-    M = 2048;                    
+    L = 512;
+    M = 9192;                    
 
     mass = 2000;
     sigmax = 1.0;
     fID = 1;
 
-    dt = 0.1;
-    Nstep = 80000; %ceil(7.5 / (k(1) / mass) / dt); % 5000;
+    dt = 0.5;
+    Nstep = 20000; %ceil(7.5 / (k(1) / mass) / dt); % 5000;
     tgraph = 100;
 
-    enable_plot = true;
-    enable_plot_diab_surf = false;
-    enable_plot_surf = false;
+    enable_plot = false;
     % grids
     x0 = linspace(-L/2, L/2, M)';
     dx = x0(2) - x0(1);
@@ -190,9 +188,16 @@ function exact_1d(xI, kxI, init_s)
                 drawnow;
             end
 
+            % check end
+            act_region = [-15.0,15.0];
+            wall_idx = round((act_region - x0(1)) / dx);
+            if sum(sum(abs(psiad(wall_idx(1):wall_idx(2), :)).^2)) < 1e-4
+                fprintf('#checked end\n');
+                break;
+            end
         end
     end
-    fprintf(fID, '#%16.10f%16.10f%16.10f%16.10f%16.10f%16.10f%16.10f\n', ...
+    fprintf(fID, ' %16.10f%16.10f%16.10f%16.10f%16.10f%16.10f%16.10f\n', ...
                 kxI, ...
                 sum(sum(abs(psiad_k(M/2+1:M,1).^2))), ...
                 sum(sum(abs(psiad_k(M/2+1:M,2).^2))), ...
