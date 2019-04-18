@@ -81,10 +81,11 @@ namespace {
         const double w = param_omega;
         const double g = param_g;
         const double V = param_V;
+        const double dG0 = param_dG0;
 
         vector< complex<double> > H(4, 0.0);
         H[0+0*2] = 0.5 * m * pow(w * x, 2);
-        H[1+1*2] = 0.5 * m * pow(w * (x - g), 2);
+        H[1+1*2] = 0.5 * m * pow(w * (x - g), 2) + dG0;
         H[0+1*2] = V;
         H[1+0*2] = conj(H[0+1*2]);
 
@@ -96,6 +97,7 @@ namespace {
         const double w = param_omega;
         const double g = param_g;
         const double V = param_V;
+        const double dG0 = param_dG0;
 
         vector< complex<double> > nablaH(4);
         vector< complex<double> >& Hx = nablaH;

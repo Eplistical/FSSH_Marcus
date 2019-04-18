@@ -16,6 +16,8 @@
 #include "boost/program_options.hpp"
 #include "spin_boson_1d_potential.hpp"
 
+// A-FSSH WITH LANDRY'S ALGORITHM
+//  LANDRY, SUBOTNIK, J. Chem. Phys. 137, 22A513 (2012)
 
 // -- GLOBAL -- //
 
@@ -42,25 +44,26 @@ const double omega = 4.375e-5;
 const double Er = 0.0239;
 const double M = sqrt(0.5 * Er * mass * omega * omega);
 const double g = 2.0 * M / mass / omega / omega;
-const double dG0 = -0.018;
 const double fric_gamma = 1.5e-4; // 0.0024; 
 
 const double sigma_x = 0.0;
-//const double sigma_x = sqrt(kT / mass / omega / omega); 
 const double sigma_p = sqrt(kT * mass);
 
 // tunable parameters
 double V = 2.5e-5;
+double dG0 = -0.018;
+
 double init_x = 0.0;
 double init_p = 0.0;
 double init_s = 0.0;
 
-double dt = 2.5;
+double dt = 1.0;
 int Nstep = 10000;
 int output_step = 100;
 int Ntraj = 5000;
 bool enable_hop = true;
 bool enable_deco = true;
+bool enable_prev = true;
 int seed = 0;
 
 // cache
@@ -79,6 +82,7 @@ bool argparse(int argc, char** argv)
     desc.add_options()
         ("help", "produce help message")
         ("V", po::value<double>(&V), "coupling magnitude V")
+        ("dG0", po::value<double>(&dG0), "driving force")
         ("init_x", po::value<double>(&init_x), "init x")
         ("init_p", po::value<double>(&init_p), "potential para init_p")
         ("init_s", po::value<double>(&init_s), "init surface")
@@ -88,6 +92,7 @@ bool argparse(int argc, char** argv)
         ("dt", po::value<double>(&dt), "single time step")
         ("enable_hop", po::value<bool>(&enable_hop), "enable hopping")
         ("enable_deco", po::value<bool>(&enable_deco), "enable decoherence")
+        ("enable_prev", po::value<bool>(&enable_prev), "enable momentum reversal")
         ("seed", po::value<int>(&seed), "random seed. Default 0")
         ;
     po::variables_map vm; 
@@ -128,10 +133,6 @@ void integrator(state_t& state, const double dt) {
     // ele part, RK4
 
     double v = p / mass;
-    vector< complex<double> > Emat(edim * edim);
-    for (int i(0); i < edim; ++i) {
-        Emat[i+i*edim] = eva[i];
-    }
 
     vector< complex<double> > k1, k2, k3, k4; // c
 
@@ -144,47 +145,51 @@ void integrator(state_t& state, const double dt) {
     copy(c.begin(), c.end(), state.begin() + 2);
 
     // moments part, RK4
+    if (enable_deco) {
+        vector< complex<double> > l1, l2, l3, l4; // rmom
+        vector< complex<double> > m1, m2, m3, m4; // pmom
+        vector< complex<double> > TR, TP, dF, sigma, dFsigma;
 
-    vector< complex<double> > l1, l2, l3, l4; // rmom
-    vector< complex<double> > m1, m2, m3, m4; // pmom
-    vector< complex<double> > TR, TP, dF, sigma, dFsigma;
-
-    dF = F - F[s+s*edim] * matrixop::eye(edim);
-    sigma.resize(edim * edim);
-    for (int j(0); j < edim; ++j) {
-        for (int k(0); k < edim; ++k) {
-            sigma[j+k*edim] = c[j] * conj(c[k]);
+        vector< complex<double> > Emat(edim * edim);
+        for (int i(0); i < edim; ++i) {
+            Emat[i+i*edim] = eva[i];
         }
+
+        dF = F - F[s+s*edim] * matrixop::eye(edim);
+        sigma.resize(edim * edim);
+        for (int j(0); j < edim; ++j) {
+            for (int k(0); k < edim; ++k) {
+                sigma[j+k*edim] = c[j] * conj(c[k]);
+            }
+        }
+        dFsigma = matrixop::anticommutator(dF, sigma);
+
+        TR = -zI * matrixop::commutator(Emat, rmom) + pmom / mass -  v * matrixop::commutator(dc, rmom);
+        TP = -zI * matrixop::commutator(Emat, pmom) + 0.5 * dFsigma - v * matrixop::commutator(dc, pmom);
+        l1 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
+        m1 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
+
+        TR = -zI * matrixop::commutator(Emat, rmom + 0.5 * l1) + (pmom + 0.5 * m1) / mass -  v * matrixop::commutator(dc, rmom + 0.5 * l1);
+        TP = -zI * matrixop::commutator(Emat, pmom + 0.5 * m1) + 0.5 * dFsigma - v * matrixop::commutator(dc, pmom + 0.5 * m1);
+        l2 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
+        m2 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
+
+        TR = -zI * matrixop::commutator(Emat, rmom + 0.5 * l2) + (pmom + 0.5 * m2) / mass -  v * matrixop::commutator(dc, rmom + 0.5 * l2);
+        TP = -zI * matrixop::commutator(Emat, pmom + 0.5 * m2) + 0.5 * dFsigma - v * matrixop::commutator(dc, pmom + 0.5 * m2);
+        l3 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
+        m3 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
+
+        TR = -zI * matrixop::commutator(Emat, rmom + l3) + (pmom + m3) / mass -  v * matrixop::commutator(dc, rmom + l3);
+        TP = -zI * matrixop::commutator(Emat, pmom + m3) + 0.5 * dFsigma - v * matrixop::commutator(dc, pmom + m3);
+        l4 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
+        m4 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
+
+        rmom += l1 / 6.0 + l2 / 3.0 + l3 / 3.0 + l4 / 6.0;
+        pmom += m1 / 6.0 + m2 / 3.0 + m3 / 3.0 + m4 / 6.0;
+
+        copy(rmom.begin(), rmom.end(), state.begin() + 5);
+        copy(pmom.begin(), pmom.end(), state.begin() + 9);
     }
-    dFsigma = matrixop::anticommutator(dF, sigma);
-    
-
-    TR = -zI * matrixop::commutator(Emat, rmom) - v * matrixop::commutator(dc, rmom) + pmom / mass;
-    TP = -zI * matrixop::commutator(Emat, pmom) - v * matrixop::commutator(dc, pmom) + 0.5 * dFsigma;
-    l1 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-    m1 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-
-    TR = -zI * matrixop::commutator(Emat, rmom + 0.5 * l1) - v * matrixop::commutator(dc, rmom + 0.5 * l1) + (pmom + 0.5 * m1) / mass;
-    TP = -zI * matrixop::commutator(Emat, pmom + 0.5 * m1) - v * matrixop::commutator(dc, pmom + 0.5 * m1) + 0.5 * dFsigma;
-    l2 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-    m2 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-
-    TR = -zI * matrixop::commutator(Emat, rmom + 0.5 * l2) - v * matrixop::commutator(dc, rmom + 0.5 * l2) + (pmom + 0.5 * m2) / mass;
-    TP = -zI * matrixop::commutator(Emat, pmom + 0.5 * m2) - v * matrixop::commutator(dc, pmom + 0.5 * m2) + 0.5 * dFsigma;
-    l3 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-    m3 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-
-    TR = -zI * matrixop::commutator(Emat, rmom + l3) - v * matrixop::commutator(dc, rmom + l3) + (pmom + m3) / mass;
-    TP = -zI * matrixop::commutator(Emat, pmom + m3) - v * matrixop::commutator(dc, pmom + m3) + 0.5 * dFsigma;
-    l4 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-    m4 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-
-    rmom += l1 / 6.0 + l2 / 3.0 + l3 / 3.0 + l4 / 6.0;
-    pmom += m1 / 6.0 + m2 / 3.0 + m3 / 3.0 + m4 / 6.0;
-
-    copy(rmom.begin(), rmom.end(), state.begin() + 5);
-    copy(pmom.begin(), pmom.end(), state.begin() + 9);
-
 
     // nuclear part, VV
 
@@ -216,41 +221,47 @@ int hopper(state_t& state) {
         double tmp = p * p - 2 * mass * dE;
         if (tmp > 0.0) {
             // hop accepted
-            // new momentum
             double pnew = sqrt(tmp);
-            // moments
-            rmom.assign(edim * edim, 0.0);
-
-            pmom[1-s+(1-s)*edim] = 0.0;
-            if (abs(c[s]) < 1e-10) {
-                pmom[s+s*edim] = 0.0;
-            }
-            else {
-                tmp = pnew * pnew - 2 * mass * dE;
-                if (tmp <= 0.0) {
-                    pmom[s+s*edim] = 0.0;
-                }
-                else {
-                    pmom[s+s*edim] = (sqrt(tmp) - pnew) * (c[s] * c[1-s]).real();
-                }
-            }
-
             state[1] = pnew * (p < 0.0 ? -1 : 1); 
             state[4].real(1.0 - s); 
-            copy(rmom.begin(), rmom.end(), state.begin() + 5);
-            copy(rmom.begin(), rmom.end(), state.begin() + 9);
+
+            // moments
+            if (enable_deco) {
+                rmom.assign(edim * edim, 0.0);
+
+                for (int k(0); k < edim; ++k) {
+                    if (k == s or abs(c[k]) < 1e-8) {
+                        pmom[k+k*edim] = 0.0;
+                    }
+                    else {
+                        double ptmp = pnew * pnew + 2 * mass * (eva[s] - eva[k]);
+                        if (ptmp < 0.0) {
+                            pmom[k+k*edim] = 0.0;
+                        }
+                        else {
+                            pmom[k+k*edim] = pow(abs(c[k]), 2) * (sqrt(ptmp) - pnew) * 
+                                (p > 0.0 ? 1.0 : -1.0);
+                        }
+                    }
+                }
+
+                copy(rmom.begin(), rmom.end(), state.begin() + 5);
+                copy(rmom.begin(), rmom.end(), state.begin() + 9);
+            }
 
             return (s == 0) ? HOP_UP : HOP_DN;
         }
         else {
             // hop frustrated
-            double F0d01 = (F[0+0*edim] * dc[0+1*edim]).real();
-            double F1d01 = (F[1+1*edim] * dc[0+1*edim]).real();
-            double vd01 = p / mass * dc[0+1*2].real();
-            if (F0d01 * F1d01 < 0.0 and vd01 * F1d01 < 0.0)
-            {
-                // momentum reversal
-                state[1] *= -1.0;
+            if (enable_prev) {
+                double F0d01 = (F[0+0*edim] * dc[0+1*edim]).real();
+                double F1d01 = (F[1+1*edim] * dc[0+1*edim]).real();
+                double vd01 = p / mass * dc[0+1*2].real();
+                if (F0d01 * F1d01 < 0.0 and vd01 * F1d01 < 0.0)
+                {
+                    // momentum reversal
+                    state[1] *= -1.0;
+                }
             }
             return HOP_FR; 
         }
@@ -269,40 +280,43 @@ void decoherencer(state_t& state, const double xi = 1.0) {
     vector< complex<double> > rmom(state.begin() + 5, state.begin() + 9);
     vector< complex<double> > pmom(state.begin() + 9, state.begin() + 13);
 
-    double Pcollapse, Preset;
-    int const n = 1 - s;
+    // collapse & reset
+    for (int n(0); n < edim; ++n) {
+        if (n != s) {
+            const double Pcollapse = dt * (0.5 * ((F[n+n*edim] - F[s+s*edim]).real() * rmom[n+n*edim].real()) - 2 * xi * abs(F[s+n*edim] * rmom[n+n*edim]));
+            const double Preset = dt * (-0.5 * ((F[n+n*edim] - F[s+s*edim]).real() * rmom[n+n*edim].real()));
 
-    Pcollapse = dt * ( 0.5 * (F[n+n*edim] - F[s+s*edim]) * rmom[n+n*edim] - 2.0 * xi * abs(F[s+n*edim] * rmom[n+n*edim]) ).real();
-    Preset = dt * ( -0.5 * (F[n+n*edim] - F[s+s*edim] * rmom[n+n*edim]) ).real();
+            if (randomer::rand() < Pcollapse) {
+                // Landry 2012 Eqn (45) -- TYPO --
+                c[n] = 0.0;
+                c[s] = c[s] / abs(c[s]) * sqrt(pow(abs(c[s]), 2) + pow(abs(c[n]), 2));
+                copy(c.begin(), c.end(), state.begin() + 2);
 
-    if (randomer::rand() < Pcollapse) {
-        c[s] = 0.0;
-        c[n] = 1.0;
-        for (int j(0); j < edim; ++j) {
-            rmom[j+n*edim] = 0.0;
-            rmom[n+j*edim] = 0.0;
-            pmom[j+n*edim] = 0.0;
-            pmom[n+j*edim] = 0.0;
+                for (int j(0); j < edim; ++j) {
+                    rmom[j+n*edim] = 0.0;
+                    pmom[j+n*edim] = 0.0;
+                    rmom[n+j*edim] = 0.0;
+                    pmom[n+j*edim] = 0.0;
+                } 
+                copy(rmom.begin(), rmom.end(), state.begin() + 5);
+                copy(rmom.begin(), rmom.end(), state.begin() + 9);
+            }
+            if (randomer::rand() < Preset) {
+                for (int j(0); j < edim; ++j) {
+                    rmom[j+n*edim] = 0.0;
+                    pmom[j+n*edim] = 0.0;
+                    rmom[n+j*edim] = 0.0;
+                    pmom[n+j*edim] = 0.0;
+                } 
+                copy(rmom.begin(), rmom.end(), state.begin() + 5);
+                copy(rmom.begin(), rmom.end(), state.begin() + 9);
+            }
         }
-        copy(c.begin(), c.end(), state.begin() + 2);
-        copy(rmom.begin(), rmom.end(), state.begin() + 5);
-        copy(rmom.begin(), rmom.end(), state.begin() + 9);
-    }
-    if (randomer::rand() < Preset) {
-        for (int j(0); j < edim; ++j) {
-            rmom[j+n*edim] = 0.0;
-            rmom[n+j*edim] = 0.0;
-            pmom[j+n*edim] = 0.0;
-            pmom[n+j*edim] = 0.0;
-        }
-        copy(rmom.begin(), rmom.end(), state.begin() + 5);
-        copy(rmom.begin(), rmom.end(), state.begin() + 9);
     }
 }
 
 
 void afssh_1d_mpi() {
-
     // potential para
     set_potenial_params(vector<double> { mass, omega, g, dG0, V });
 
@@ -378,18 +392,18 @@ void afssh_1d_mpi() {
                         vector< complex<double> > c(st.begin() + 2, st.begin() + 4);
                         int s = static_cast<int>(st[4].real());
 
-                        // diabatic population -- Method 3 from Landry 2013 communication 
-                        vector<double> eva;
+                        vector<double> evatmp;
                         vector< complex<double> > U;
-                        matrixop::hdiag(cal_H(x), eva, U);
+                        matrixop::hdiag(cal_H(x), evatmp, U);
 
                         n0d += pow(abs(U[0+s*2]), 2) + 2 * (U[0+0*2] * c[0] * conj(c[1]) * conj(U[0+1*2])).real();
                         n1d += pow(abs(U[1+s*2]), 2) + 2 * (U[1+0*2] * c[0] * conj(c[1]) * conj(U[1+1*2])).real();
 
                         // energy
                         KE += p * p / mass / 2;
-                        PE += eva[s]; 
+                        PE += evatmp[s]; 
                     });
+
             const int irec = istep / output_step;
             record["n0d"][irec] = n0d;
             record["n1d"][irec] = n1d;
@@ -412,14 +426,10 @@ void afssh_1d_mpi() {
         }
         else if (MPIer::master) {
             vector<double> vbuf;
-            MPIer::recv(r, vbuf);
-            record["n0d"] += vbuf;
-            MPIer::recv(r, vbuf);
-            record["n1d"] += vbuf;
-            MPIer::recv(r, vbuf);
-            record["KE"] += vbuf;
-            MPIer::recv(r, vbuf);
-            record["PE"] += vbuf;
+            MPIer::recv(r, vbuf); record["n0d"] += vbuf;
+            MPIer::recv(r, vbuf); record["n1d"] += vbuf;
+            MPIer::recv(r, vbuf); record["KE"] += vbuf;
+            MPIer::recv(r, vbuf); record["PE"] += vbuf;
         }
         MPIer::barrier();
     }
@@ -466,8 +476,12 @@ void afssh_1d_mpi() {
                     " init_x = ", init_x, " init_p = ", init_p, 
                     " sigma_x = ", sigma_x, " sigma_p = ", sigma_p, 
                     " init_s = ", init_s,
+                    " enable_hop = ", enable_hop,
+                    " enable_deco = ", enable_deco,
+                    " enable_prev = ", enable_prev,
                     " seed = ", seed
                 );
+        ioer::info("# ln(V) = ", log(V));
         ioer::tabout('#', "t", "n0d", "n1d", "KE", "PE", "Etot");
 
         for (int irec = 0; irec < Nrec; ++irec) {
@@ -490,7 +504,11 @@ void afssh_1d_mpi() {
 }
 
 void check() {
-
+    // check surf
+    for (double x = -10000; x < 15000; x += 10) {
+        cal_info_nume(x, eva, dc, F, lastevt);
+        ioer::tabout(x, eva, F[0+0*edim].real(), F[1+1*edim].real(), dc[0+1*edim].real(), dc[0+1*edim].imag());
+    }
 }
 
 
