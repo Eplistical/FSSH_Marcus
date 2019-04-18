@@ -161,28 +161,16 @@ void integrator(state_t& state, const double dt) {
             }
         }
         dFsigma = matrixop::anticommutator(dF, sigma);
+
+        l1 = dt * (-zI * matrixop::commutator(Emat, rmom) + pmom / mass -  v * matrixop::commutator(dc, rmom));
+        m1 = dt * (-zI * matrixop::commutator(Emat, pmom) + 0.5 * dFsigma - v * matrixop::commutator(dc, pmom));
+        l2 = dt * (-zI * matrixop::commutator(Emat, rmom + 0.5 * l1) + (pmom + 0.5 * m1) / mass -  v * matrixop::commutator(dc, rmom + 0.5 * l1));
+        m2 = dt * (-zI * matrixop::commutator(Emat, pmom + 0.5 * m1) + 0.5 * dFsigma - v * matrixop::commutator(dc, pmom + 0.5 * m1));
+        l3 = dt * (-zI * matrixop::commutator(Emat, rmom + 0.5 * l2) + (pmom + 0.5 * m2) / mass -  v * matrixop::commutator(dc, rmom + 0.5 * l2));
+        m3 = dt * (-zI * matrixop::commutator(Emat, pmom + 0.5 * m2) + 0.5 * dFsigma - v * matrixop::commutator(dc, pmom + 0.5 * m2));
+        l4 = dt * (-zI * matrixop::commutator(Emat, rmom + l3) + (pmom + m3) / mass -  v * matrixop::commutator(dc, rmom + l3));
+        m4 = dt * (-zI * matrixop::commutator(Emat, pmom + m3) + 0.5 * dFsigma - v * matrixop::commutator(dc, pmom + m3));
         
-
-        TR = -zI * matrixop::commutator(Emat, rmom) - v * matrixop::commutator(dc, rmom) + pmom / mass;
-        TP = -zI * matrixop::commutator(Emat, pmom) - v * matrixop::commutator(dc, pmom) + 0.5 * dFsigma;
-        l1 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-        m1 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-
-        TR = -zI * matrixop::commutator(Emat, rmom + 0.5 * l1) - v * matrixop::commutator(dc, rmom + 0.5 * l1) + (pmom + 0.5 * m1) / mass;
-        TP = -zI * matrixop::commutator(Emat, pmom + 0.5 * m1) - v * matrixop::commutator(dc, pmom + 0.5 * m1) + 0.5 * dFsigma;
-        l2 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-        m2 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-
-        TR = -zI * matrixop::commutator(Emat, rmom + 0.5 * l2) - v * matrixop::commutator(dc, rmom + 0.5 * l2) + (pmom + 0.5 * m2) / mass;
-        TP = -zI * matrixop::commutator(Emat, pmom + 0.5 * m2) - v * matrixop::commutator(dc, pmom + 0.5 * m2) + 0.5 * dFsigma;
-        l3 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-        m3 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-
-        TR = -zI * matrixop::commutator(Emat, rmom + l3) - v * matrixop::commutator(dc, rmom + l3) + (pmom + m3) / mass;
-        TP = -zI * matrixop::commutator(Emat, pmom + m3) - v * matrixop::commutator(dc, pmom + m3) + 0.5 * dFsigma;
-        l4 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-        m4 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-
         rmom += l1 / 6.0 + l2 / 3.0 + l3 / 3.0 + l4 / 6.0;
         pmom += m1 / 6.0 + m2 / 3.0 + m3 / 3.0 + m4 / 6.0;
 
@@ -225,20 +213,11 @@ int hopper(state_t& state) {
 
             // moments
             if (enable_deco) {
-                rmom.assign(edim * edim, 0.0);
-
-                pmom[1-s+(1-s)*edim] = 0.0;
-                if (abs(c[s]) < 1e-10) {
-                    pmom[s+s*edim] = 0.0;
-                }
-                else {
-                    tmp = pnew * pnew - 2 * mass * dE;
-                    if (tmp <= 0.0) {
-                        pmom[s+s*edim] = 0.0;
-                    }
-                    else {
-                        pmom[s+s*edim] = (sqrt(tmp) - pnew) * (c[s] * c[1-s]).real();
-                    }
+                complex<double> ptmp = pmom[1-s+(1-s)*edim];
+                complex<double> rtmp = rmom[1-s+(1-s)*edim];
+                for (int i(0); i < edim; ++i) {
+                    rmom[i+i*edim] -= rtmp;
+                    pmom[i+i*edim] -= ptmp;
                 }
 
                 copy(rmom.begin(), rmom.end(), state.begin() + 5);
@@ -276,32 +255,17 @@ void decoherencer(state_t& state, const double xi = 1.0) {
     vector< complex<double> > rmom(state.begin() + 5, state.begin() + 9);
     vector< complex<double> > pmom(state.begin() + 9, state.begin() + 13);
 
-    double Pcollapse, Preset;
-    int const n = 1 - s;
-
-    Pcollapse = dt * ( 0.5 * (F[n+n*edim] - F[s+s*edim]) * rmom[n+n*edim] - 2.0 * xi * abs(F[s+n*edim] * rmom[n+n*edim]) ).real();
-    Preset = dt * ( -0.5 * (F[n+n*edim] - F[s+s*edim] * rmom[n+n*edim]) ).real();
+    // collapse
+    const double Pcollapse = 0.5 * dt * (F[0+0*edim] - F[1+1*edim]).real() * (rmom[0+0*edim] - rmom[1+1*edim]).real() * 
+                ( (rmom[0+0*edim] - rmom[1+1*edim]).real() * (pmom[0+0*edim] - pmom[1+1*edim]).real() > 0.0 ? 1.0 : -1.0);
 
     if (randomer::rand() < Pcollapse) {
-        c[s] = 0.0;
-        c[n] = 1.0;
-        for (int j(0); j < edim; ++j) {
-            rmom[j+n*edim] = 0.0;
-            rmom[n+j*edim] = 0.0;
-            pmom[j+n*edim] = 0.0;
-            pmom[n+j*edim] = 0.0;
-        }
+        c[s] = 1.0;
+        c[1-s] = 0.0;
+        rmom.assign(edim * edim, matrixop::ZEROZ);
+        pmom.assign(edim * edim, matrixop::ZEROZ);
+
         copy(c.begin(), c.end(), state.begin() + 2);
-        copy(rmom.begin(), rmom.end(), state.begin() + 5);
-        copy(rmom.begin(), rmom.end(), state.begin() + 9);
-    }
-    if (randomer::rand() < Preset) {
-        for (int j(0); j < edim; ++j) {
-            rmom[j+n*edim] = 0.0;
-            rmom[n+j*edim] = 0.0;
-            pmom[j+n*edim] = 0.0;
-            pmom[n+j*edim] = 0.0;
-        }
         copy(rmom.begin(), rmom.end(), state.begin() + 5);
         copy(rmom.begin(), rmom.end(), state.begin() + 9);
     }
@@ -479,6 +443,9 @@ void afssh_1d_mpi() {
                     " init_x = ", init_x, " init_p = ", init_p, 
                     " sigma_x = ", sigma_x, " sigma_p = ", sigma_p, 
                     " init_s = ", init_s,
+                    " enable_hop = ", enable_hop,
+                    " enable_deco = ", enable_deco,
+                    " enable_prev = ", enable_prev,
                     " seed = ", seed
                 );
         ioer::tabout('#', "t", "n0t", "n1t", "n0r", "n1r", "KE", "PE", "Etot");
@@ -492,8 +459,7 @@ void afssh_1d_mpi() {
                     record["n1r"][irec] / Ntraj, 
                     record["KE"][irec] / Ntraj, 
                     record["PE"][irec] / Ntraj, 
-                    (record["KE"][irec] + record["PE"][irec]) / Ntraj,
-                    (record["KE"][irec] + record["PE"][irec]) 
+                    (record["KE"][irec] + record["PE"][irec]) / Ntraj
                     );
         }
 
