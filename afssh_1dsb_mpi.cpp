@@ -132,23 +132,26 @@ void integrator(state_t& state, const double dt) {
 
     // ele part, RK4
 
-    double v = p / mass;
+    auto el_rk4_func = [&dt, &p]
+        ( const vector< complex<double> >& c, vector< complex<double> >& k ) 
+        {
+            k = dt * (-zI * c * eva - p / mass * matrixop::matvec(dc, c));
+        };
 
     vector< complex<double> > k1, k2, k3, k4; // c
 
-    k1 = dt * (-zI * c * eva - v * matrixop::matvec(dc, c));
-    k2 = dt * (-zI * (c + 0.5 * k1) * eva - v * matrixop::matvec(dc, c + 0.5 * k1));
-    k3 = dt * (-zI * (c + 0.5 * k2) * eva - v * matrixop::matvec(dc, c + 0.5 * k2));
-    k4 = dt * (-zI * (c + k3) * eva - v * matrixop::matvec(dc, c + k3));
+    el_rk4_func(c, k1);
+    el_rk4_func(c + 0.5 * k1, k2);
+    el_rk4_func(c + 0.5 * k2, k3);
+    el_rk4_func(c + k3, k4);
 
     c += k1 / 6.0 + k2 / 3.0 + k3 / 3.0 + k4 / 6.0;
     copy(c.begin(), c.end(), state.begin() + 2);
 
     // moments part, RK4
+
     if (enable_deco) {
-        vector< complex<double> > l1, l2, l3, l4; // rmom
-        vector< complex<double> > m1, m2, m3, m4; // pmom
-        vector< complex<double> > TR, TP, dF, sigma, dFsigma;
+        vector< complex<double> > dF, sigma, dFsigma;
 
         vector< complex<double> > Emat(edim * edim);
         for (int i(0); i < edim; ++i) {
@@ -164,25 +167,28 @@ void integrator(state_t& state, const double dt) {
         }
         dFsigma = matrixop::anticommutator(dF, sigma);
 
-        TR = -zI * matrixop::commutator(Emat, rmom) + pmom / mass -  v * matrixop::commutator(dc, rmom);
-        TP = -zI * matrixop::commutator(Emat, pmom) + 0.5 * dFsigma - v * matrixop::commutator(dc, pmom);
-        l1 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-        m1 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
+        auto deco_rk4_func = [&dt, &Emat, &p, &dFsigma]
+            (
+                const int s,
+                const vector< complex<double> >& rmom, 
+                const vector< complex<double> >& pmom, 
+                vector< complex<double> >& l, 
+                vector< complex<double> >& m 
+            ) 
+            {
+                vector< complex<double> > TR = -zI * matrixop::commutator(Emat, rmom) + pmom / mass -  p / mass * matrixop::commutator(dc, rmom);
+                vector< complex<double> > TP = -zI * matrixop::commutator(Emat, pmom) + 0.5 * dFsigma - p / mass * matrixop::commutator(dc, pmom);
+                l = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
+                m = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
+            };
 
-        TR = -zI * matrixop::commutator(Emat, rmom + 0.5 * l1) + (pmom + 0.5 * m1) / mass -  v * matrixop::commutator(dc, rmom + 0.5 * l1);
-        TP = -zI * matrixop::commutator(Emat, pmom + 0.5 * m1) + 0.5 * dFsigma - v * matrixop::commutator(dc, pmom + 0.5 * m1);
-        l2 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-        m2 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
+        vector< complex<double> > l1, l2, l3, l4; // rmom
+        vector< complex<double> > m1, m2, m3, m4; // pmom
 
-        TR = -zI * matrixop::commutator(Emat, rmom + 0.5 * l2) + (pmom + 0.5 * m2) / mass -  v * matrixop::commutator(dc, rmom + 0.5 * l2);
-        TP = -zI * matrixop::commutator(Emat, pmom + 0.5 * m2) + 0.5 * dFsigma - v * matrixop::commutator(dc, pmom + 0.5 * m2);
-        l3 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-        m3 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-
-        TR = -zI * matrixop::commutator(Emat, rmom + l3) + (pmom + m3) / mass -  v * matrixop::commutator(dc, rmom + l3);
-        TP = -zI * matrixop::commutator(Emat, pmom + m3) + 0.5 * dFsigma - v * matrixop::commutator(dc, pmom + m3);
-        l4 = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-        m4 = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
+        deco_rk4_func(s, rmom, pmom, l1, m1);
+        deco_rk4_func(s, rmom + 0.5 * l1, pmom + 0.5 * m1, l2, m2);
+        deco_rk4_func(s, rmom + 0.5 * l2, pmom + 0.5 * m2, l3, m3);
+        deco_rk4_func(s, rmom + l3, pmom + m3, l4, m4);
 
         rmom += l1 / 6.0 + l2 / 3.0 + l3 / 3.0 + l4 / 6.0;
         pmom += m1 / 6.0 + m2 / 3.0 + m3 / 3.0 + m4 / 6.0;
@@ -249,7 +255,7 @@ int hopper(state_t& state) {
                 }
 
                 copy(rmom.begin(), rmom.end(), state.begin() + 5);
-                copy(rmom.begin(), rmom.end(), state.begin() + 9);
+                copy(pmom.begin(), pmom.end(), state.begin() + 9);
             }
 
             return (s == 0) ? HOP_UP : HOP_DN;
@@ -302,7 +308,7 @@ void decoherencer(state_t& state, const double xi = 1.0) {
                     pmom[n+j*edim] = 0.0;
                 } 
                 copy(rmom.begin(), rmom.end(), state.begin() + 5);
-                copy(rmom.begin(), rmom.end(), state.begin() + 9);
+                copy(pmom.begin(), pmom.end(), state.begin() + 9);
             }
             if (randomer::rand() < Preset) {
                 for (int j(0); j < edim; ++j) {
@@ -312,7 +318,7 @@ void decoherencer(state_t& state, const double xi = 1.0) {
                     pmom[n+j*edim] = 0.0;
                 } 
                 copy(rmom.begin(), rmom.end(), state.begin() + 5);
-                copy(rmom.begin(), rmom.end(), state.begin() + 9);
+                copy(pmom.begin(), pmom.end(), state.begin() + 9);
             }
         }
     }
@@ -475,7 +481,6 @@ void afssh_1d_mpi() {
                     hop_count_summary[i] += vbuf[i];
                 }
             }
-
         }
         MPIer::barrier();
     }
