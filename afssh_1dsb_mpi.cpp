@@ -215,6 +215,9 @@ int hopper(state_t& state) {
 
     // calc hop prob
     double g = -2 * dt * (c[s] * conj(c[1-s]) * (p / mass * dc[1-s+s*2])).real() / (c[s] * conj(c[s])).real();
+    if (g >= 1.0) {
+        ioer::info(misc::fmtstring("# hopper: WARNING -- g = %.3f is larger than 1", g));
+    }
     double dE = eva[1-s] - eva[s];
     // hop
     if (randomer::rand() < g) {
@@ -333,7 +336,7 @@ void afssh_1d_mpi() {
     // statistics
     double hopup = 0.0, hopdn = 0.0, hopfr = 0.0, hoprj = 0.0;
     vector<double> hop_count(my_Ntraj, 0.0);
-    vector<double> hop_count_summary(1, 0.0);
+    vector<double> hop_count_summary(10, 0.0);
 
     double n0d = 0.0, n1d = 0.0;
     double KE = 0.0, PE = 0.0;
