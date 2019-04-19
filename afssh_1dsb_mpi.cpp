@@ -333,7 +333,7 @@ void afssh_1d_mpi() {
     // statistics
     double hopup = 0.0, hopdn = 0.0, hopfr = 0.0, hoprj = 0.0;
     vector<double> hop_count(my_Ntraj, 0.0);
-    vector<double> hop_count_summary(50, 0.0);
+    vector<double> hop_count_summary(1, 0.0);
 
     double n0d = 0.0, n1d = 0.0;
     double KE = 0.0, PE = 0.0;
@@ -440,7 +440,12 @@ void afssh_1d_mpi() {
 
 
     for_each(hop_count.begin(), hop_count.end(),
-            [&hop_count_summary](double x) { hop_count_summary[static_cast<int>(x)] += 1.0; });
+            [&hop_count_summary](double x) { 
+                if (hop_count_summary.size() < static_cast<int>(x) + 1) {
+                    hop_count_summary.resize(static_cast<int>(x) + 1);
+                }
+                hop_count_summary[static_cast<int>(x)] += 1.0; 
+            });
     MPIer::barrier();
 
     for (int r = 1; r < MPIer::size; ++r) {
@@ -455,7 +460,19 @@ void afssh_1d_mpi() {
             MPIer::recv(r, buf); hopdn += buf;
             MPIer::recv(r, buf); hopfr += buf;
             MPIer::recv(r, buf); hoprj += buf;
-            MPIer::recv(r, vbuf); hop_count_summary += vbuf;
+
+            MPIer::recv(r, vbuf); 
+
+            if (hop_count_summary.size() < vbuf.size()) {
+                hop_count_summary.resize(vbuf.size());
+                hop_count_summary += vbuf;
+            }
+            else {
+                for (int i(0); i < vbuf.size(); ++i) {
+                    hop_count_summary[i] += vbuf[i];
+                }
+            }
+
         }
         MPIer::barrier();
     }
