@@ -55,7 +55,7 @@ namespace {
     double param_dG0 = -0.018;
     double param_V = 2.5e-5;
 
-    void output_potential_param() {
+    void output_potential_params() {
         ioer::info("# 2D Spin Boson Potential parameters: ", 
                     " mass = ", param_mass,
                     " omega = ", param_omega,
@@ -75,8 +75,8 @@ namespace {
         param_omega[1] = params[3];
         param_g[0] = params[4];
         param_g[1] = params[5];
-        param_dG0 = param[6];
-        param_V = param[7];
+        param_dG0 = params[6];
+        param_V = params[7];
     }
 
     vector< complex<double> > cal_H(const vector<double>& r) {

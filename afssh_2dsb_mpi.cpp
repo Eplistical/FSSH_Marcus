@@ -170,43 +170,46 @@ void integrator(state_t& state, const double dt) {
         vector< complex<double> > sigma = outer_product(c, conj(c));
         vector< vector< complex<double> > > dFsigma(ndim);
 
-        vector< complex<double> dF;
+        vector< complex<double> > dF;
         for (int i(0); i < ndim; ++i) {
             dF = F[i] - F[i][s+s*edim] * matrixop::eye(edim);
             dFsigma[i] = matrixop::anticommutator(dF, sigma);
         }
 
-        auto deco_rk4_func = [&Emat, &p, &dFsigma]
+        auto deco_rk4_func = [&Emat, &p, &dFsigma, &dt]
             (
-                const int i, const int s,
-                const vector< complex<double> >& rmom, 
-                const vector< complex<double> >& pmom, 
-                vector< complex<double> >& l, 
-                vector< complex<double> >& m 
+             const int i, const int s,
+             const vector< complex<double> >& rmom, 
+             const vector< complex<double> >& pmom, 
+             vector< complex<double> >& l, 
+             vector< complex<double> >& m 
             ) 
-        {
-            complex<double> rtmp = 0.0, ptmp = 0.0;
-            for (int j(0); j < ndim; ++j) {
-                rtmp += p[j] / mass[j] * matrixop::commutator(dc[j], rmom);
-                ptmp += p[j] / mass[j] * matrixop::commutator(dc[j], pmom);
-            } 
-            vector< complex<double> > TR = -zI * matrixop::commutator(Emat, rmom) + pmom / mass[i] - rtmp;
-            vector< complex<double> > TP = -zI * matrixop::commutator(Emat, pmom) + 0.5 * dFsigma[i] - ptmp;
+            {
+                vector< complex<double> > rtmp(edim * edim, matrixop::ZEROZ);
+                vector< complex<double> > ptmp(edim * edim, matrixop::ZEROZ);
+                for (int j(0); j < ndim; ++j) {
+                    rtmp += p[j] / mass[j] * matrixop::commutator(dc[j], rmom);
+                    ptmp += p[j] / mass[j] * matrixop::commutator(dc[j], pmom);
+                } 
+                vector< complex<double> > TR = -zI * matrixop::commutator(Emat, rmom) + pmom / mass[i] - rtmp;
+                vector< complex<double> > TP = -zI * matrixop::commutator(Emat, pmom) + 0.5 * dFsigma[i] - ptmp;
 
-            l = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
-            m = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
-        }
+                l = dt * (TR - TR[s+s*edim] * matrixop::eye(edim));
+                m = dt * (TP - TP[s+s*edim] * matrixop::eye(edim));
+            };
 
         vector< complex<double> > l1, l2, l3, l4; // rmom
         vector< complex<double> > m1, m2, m3, m4; // pmom
+        vector< complex<double> > irmom(edim * edim);
+        vector< complex<double> > ipmom(edim * edim);
         for (int i(0); i < ndim; ++i) {
             copy(rmom.begin() + i * edim * edim, rmom.begin() + (i + 1) * edim * edim, irmom.begin());
             copy(pmom.begin() + i * edim * edim, pmom.begin() + (i + 1) * edim * edim, ipmom.begin());
 
-            rk4_func(i, s, irmom, ipmom, l1, m1);
-            rk4_func(i, s, irmom + 0.5 * l1, ipmom + 0.5 * m1, l2, m2);
-            rk4_func(i, s, irmom + 0.5 * l2, ipmom + 0.5 * m2, l3, m3);
-            rk4_func(i, s, irmom + l3, ipmom + m3, l4, m4);
+            deco_rk4_func(i, s, irmom, ipmom, l1, m1);
+            deco_rk4_func(i, s, irmom + 0.5 * l1, ipmom + 0.5 * m1, l2, m2);
+            deco_rk4_func(i, s, irmom + 0.5 * l2, ipmom + 0.5 * m2, l3, m3);
+            deco_rk4_func(i, s, irmom + l3, ipmom + m3, l4, m4);
 
             irmom += l1 / 6.0 + l2 / 3.0 + l3 / 3.0 + l4 / 6.0;
             ipmom += m1 / 6.0 + m2 / 3.0 + m3 / 3.0 + m4 / 6.0;
@@ -214,6 +217,8 @@ void integrator(state_t& state, const double dt) {
             copy(irmom.begin(), irmom.end(), rmom.begin() + i * edim * edim);
             copy(ipmom.begin(), ipmom.end(), pmom.begin() + i * edim * edim);
         }
+        copy(rmom.begin(), rmom.end(), state.begin() + ndim * 2 + edim + 1);
+        copy(pmom.begin(), pmom.end(), state.begin() + ndim * 2 + edim + 1 + edim * edim * ndim);
     }
 
     // nuclear part, VV
@@ -301,6 +306,33 @@ int hopper(state_t& state)
                 // replace p & s
                 copy(p.begin(), p.end(), state.begin() + ndim);
                 state[2 * ndim + edim] = to;
+
+                // moments
+                rmom.assign(edim * edim * ndim, matrixop::ZEROZ);
+                for (int k(0); k < edim; ++k) {
+                    if (k == to or abs(c[k]) < 1e-8) {
+                        for (int i(0); i < ndim; ++i) {
+                            pmom[k+k*edim+i*edim*edim] = matrixop::ZEROZ;
+                        }
+                    }
+                    else {
+                        double tmp = pow(pn_norm_new, 2) + 2.0 * mass[0] * (eva[to] - eva[k]);
+                        if (tmp <= 0.0) {
+                            for (int i(0); i < ndim; ++i) {
+                                pmom[k+k*edim+i*edim*edim] = matrixop::ZEROZ;
+                            }
+                        }
+                        else {
+                            vector<double> dpkk = (sqrt(tmp) - pn_norm_new) * pow(abs(c[k]), 2) / pn_norm * pn;
+                            for (int i(0); i < ndim; ++i) {
+                                pmom[k+k*edim+i*edim*edim] = dpkk[i];
+                            }
+                        }
+                    }
+                }
+                copy(rmom.begin(), rmom.end(), state.begin() + ndim * 2 + edim + 1);
+                copy(pmom.begin(), pmom.end(), state.begin() + ndim * 2 + edim + 1 + edim * edim * ndim);
+
                 return (from < to) ? HOP_UP : HOP_DN;
             }
             else {
@@ -313,10 +345,10 @@ int hopper(state_t& state)
                         F0d01 += (F[i][0+0*edim] * dc[i][0+1*edim]).real();
                         F1d01 += (F[i][1+1*edim] * dc[i][0+1*edim]).real();
                         pd01 += (p[i] * dc[i][0+1*edim]).real();
-                        if (F0d01 * F1d01 < 0.0 and vd01 * F1d01 < 0.0)
+                        if (F0d01 * F1d01 < 0.0 and pd01 * F1d01 < 0.0)
                         {
                             // momentum reversal: along d direction 
-                            // TODO: WHAT IF d IS COMPLEX?
+                            // TODO: WHAT IF dc IS COMPLEX?
                             p = p - pn * 2.0;
                             copy(p.begin(), p.end(), state.begin() + ndim);
                         }
@@ -344,12 +376,12 @@ void decoherencer(state_t& state, const double xi = 1.0) {
         if (n != s) {
             double Pcollapse = 0.0;
             double Preset = 0.0;
-            complex<double>double Fsn_rmom = 0.0;
+            complex<double> Fsn_rmom = 0.0;
             for (int i(0); i < ndim; ++i) {
-                Fsn_rmom += F[i][s+n*edim] * rmom[n+n*edim+i*edim*edim];
                 Pcollapse += 0.5 * (F[i][n+n*edim] - F[i][s+s*edim]).real() * rmom[n+n*edim+i*edim*edim].real();
-                Preset -= 0.5 * (F[i][n+n*edim] - F[i][s+s*edim]).real() * rmom[n+n*edim+i*edim*edim].real();
+                Fsn_rmom += F[i][s+n*edim] * rmom[n+n*edim+i*edim*edim];
             }
+            Preset = -Pcollapse;
             Pcollapse -= 2.0 * xi * abs(Fsn_rmom);
 
             if (randomer::rand() < Pcollapse) {
@@ -435,7 +467,7 @@ void afssh_nd_mpi() {
                 cal_info_nume(real(r), eva, dc, F, lastevt);
                 // hopper
                 if (enable_hop) {
-                    int hopflag = hopper(state[itraj], mass);
+                    int hopflag = hopper(state[itraj]);
                     switch (hopflag) {
                         case HOP_UP : { hopup += 1.0; hop_count[itraj] += 1.0; break; }
                         case HOP_DN : { hopdn += 1.0; hop_count[itraj] += 1.0; break; }
@@ -462,10 +494,10 @@ void afssh_nd_mpi() {
             for_each(state.begin(), state.end(), 
                     [&n0d, &n1d, &KE, &PE](const state_t& st) { 
                         // extract info
-                        vector< complex<double> > r(state.begin(), state.begin() + ndim);
-                        vector< complex<double> > p(state.begin() + ndim, state.begin() + ndim * 2);
-                        vector< complex<double> > c(state.begin() + ndim * 2, state.begin() + ndim * 2 + edim);
-                        int s = static_cast<int>(state[ndim * 2 + edim].real());
+                        vector< complex<double> > r(st.begin(), st.begin() + ndim);
+                        vector< complex<double> > p(st.begin() + ndim, st.begin() + ndim * 2);
+                        vector< complex<double> > c(st.begin() + ndim * 2, st.begin() + ndim * 2 + edim);
+                        int s = static_cast<int>(st[ndim * 2 + edim].real());
 
                         vector<double> evatmp;
                         vector< complex<double> > U;
@@ -561,7 +593,7 @@ void afssh_nd_mpi() {
         output_potential_params();
         ioer::info("# FSSH para: ", " Ntraj = ", Ntraj, " Nstep = ", Nstep, " dt = ", dt, 
                     " mass = ", mass, " kT = ", kT, 
-                    " omega = ", omega, " g = ", g,  " Er = ", Er, " dG0 = ", dG0, 
+                    " omega = ", omega, " g = ", g, " dG0 = ", dG0, 
                     " fric_gamma = ", fric_gamma, 
                     " V = ", V, 
                     " init_r = ", init_r, " init_p = ", init_p, 
@@ -595,9 +627,9 @@ void afssh_nd_mpi() {
 }
 
 int check() {
-    vector<double> r(3, 0.0);
+    vector<double> r(ndim, 0.0);
     int N = 500;
-    vector<double> xarr = linspace(-10.0, 30.0, N);
+    vector<double> xarr = linspace(-10000.0, 15000.0, N);
     vector<double> yarr = linspace(-8.0, 8.0, N);
 
     for (int ix(0); ix < N; ++ix) {
@@ -608,7 +640,8 @@ int check() {
             r[1] = y;
 
             cal_info_nume(r, eva, dc, F, lastevt);
-            ioer::tabout(x, y, 
+            ioer::tabout(
+                    x, y, 
                     eva[0], eva[1], 
                     F[0][0+0*2].real(), F[1][0+0*2].real(),
                     F[0][1+1*2].real(), F[1][1+1*2].real(),
