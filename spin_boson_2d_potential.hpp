@@ -20,7 +20,8 @@
  *
  *  H00 = 0.5 * mx * wx**2 * x**2 + 0.5 * my * wy**2 * y**2
  *  H11 = 0.5 * mx * wx**2 * (x-gx)**2 + 0.5 * my * wy**2 * (g-gy)**2 + dG0
- *  H01 = V
+ *  H01 = V * exp(i * W * y)
+ *  H10 = conj(H01)
  *
  ****************************************************************
  *  API INFO
@@ -49,11 +50,12 @@ namespace {
     using std::vector;
     using std::complex;
 
-    vector<double> param_mass = {1.0, 1.0};
-    vector<double> param_omega { 4.375e-5, 0.0 };
+    vector<double> param_mass {1.0, 1.0};
+    vector<double> param_omega { 4.375e-5, 4.375e-5 };
     vector<double> param_g { 4997.3, 0.0 };
     double param_dG0 = -0.018;
     double param_V = 2.5e-5;
+    double param_W = 0.0;
 
     void output_potential_params() {
         ioer::info("# 2D Spin Boson Potential parameters: ", 
@@ -62,13 +64,14 @@ namespace {
                     " g = ", param_g,
                     " dG0 = ", param_dG0,
                     " V = ", param_V,
+                    " W = ", param_W,
                     ""
                     );
     }
 
     void set_potenial_params(const std::vector<double>& params) {
-        misc::crasher::confirm(params.size() >= 8, 
-                "set_potenial_params: potential paramter vector size must be >= 8");
+        misc::crasher::confirm(params.size() >= 9, 
+                "set_potenial_params: potential paramter vector size must be >= 9");
         param_mass[0] = params[0];
         param_mass[1] = params[1];
         param_omega[0] = params[2];
@@ -77,6 +80,7 @@ namespace {
         param_g[1] = params[5];
         param_dG0 = params[6];
         param_V = params[7];
+        param_W = params[8];
     }
 
     vector< complex<double> > cal_H(const vector<double>& r) {
@@ -90,11 +94,12 @@ namespace {
         const double gy = param_g[1];
         const double dG0 = param_dG0;
         const double V = param_V;
+        const double W = param_W;
 
         vector< complex<double> > H(4, 0.0);
         H[0+0*2] = 0.5 * mx * pow(wx * x, 2) + 0.5 * my * pow(wy * y, 2);
         H[1+1*2] = 0.5 * mx * pow(wx * (x - gx), 2) + 0.5 * my * pow(wy * (y - gy), 2) + dG0;
-        H[0+1*2] = V;
+        H[0+1*2] = V * exp(matrixop::IMAGIZ * W * y);
         H[1+0*2] = conj(H[0+1*2]);
 
         return H;
@@ -113,6 +118,7 @@ namespace {
         const double gy = param_g[1];
         const double dG0 = param_dG0;
         const double V = param_V;
+        const double W = param_W;
 
         // initialize nablaH
         vector< vector< complex<double> > > nablaH(ndim);
@@ -132,7 +138,7 @@ namespace {
         Hy.resize(4);
         Hy[0+0*2] = my * wy * wy * y;
         Hy[1+1*2] = my * wy * wy * (y - gy);
-        Hy[0+1*2] = 0.0;
+        Hy[0+1*2] = matrixop::IMAGIZ * W * V * exp(matrixop::IMAGIZ * W * y);
         Hy[1+0*2] = conj(Hy[0+1*2]);
 
         return nablaH;

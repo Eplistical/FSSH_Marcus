@@ -41,10 +41,12 @@ int ndim = 2;
 int edim = 2;
 
 const vector<double> mass { 1.0, 1.0};
-const vector<double> omega { 4.375e-5, 0.0};
+//const vector<double> omega { 4.375e-5, 0.0};
+const vector<double> omega { 4.375e-5, 4.375e-5};
 const vector<double> g { 4997.3, 0.0};
 const double kT = 9.5e-4;
-const vector<double> fric_gamma = { 1.5e-4, 0.0 };
+//const vector<double> fric_gamma = { 1.5e-4, 0.0 };
+const vector<double> fric_gamma = { 1.5e-4, 1.5e-4 };
 
 const vector<double> sigma_r { 0.0, 0.0 };
 const vector<double> sigma_p = sqrt(kT * mass);
@@ -52,6 +54,7 @@ const vector<double> sigma_p = sqrt(kT * mass);
 // tunable parameters
 double V = 2.5e-5;
 double dG0 = -0.018;
+double W = 0.0;
 
 vector<double> init_r { 0.0, 0.0};
 vector<double> init_p { 0.0, 0.0};
@@ -82,6 +85,7 @@ bool argparse(int argc, char** argv)
     desc.add_options()
         ("help", "produce help message")
         ("V", po::value<double>(&V), "coupling magnitude V")
+        ("W", po::value<double>(&W), "complex Hamiltonian parameter W")
         ("dG0", po::value<double>(&dG0), "driving force")
         ("init_r", po::value<decltype(init_r)>(&init_r)->multitoken(), "init_r vector")
         ("init_p", po::value<decltype(init_p)>(&init_p)->multitoken(), "init_p vector")
@@ -225,8 +229,16 @@ void integrator(state_t& state, const double dt) {
 
     vector<double> random_force = randomer::vnormal(ndim) * sqrt(2.0 * kT / dt * fric_gamma);
     vector< complex<double> > force(ndim);
+    vector< complex<double> > berry_force(ndim);
+    complex<double> vdotdc = 0.0;
+    for (int i(0); i < ndim; ++i) {
+        vdotdc += p[i] / mass[i] * dc[i][(1-s)+s*edim];
+    }
+
     for (int i(0); i < ndim; ++i) {
         force[i] = F[i][s + s * edim].real() - fric_gamma[i] * p[i] + random_force[i];
+        // berry force
+        force[i] += 2.0 * (dc[i][s+(1-s)*edim] * vdotdc).imag();
     }
     p += 0.5 * dt * force;
 
@@ -236,6 +248,8 @@ void integrator(state_t& state, const double dt) {
 
     for (int i(0); i < ndim; ++i) {
         force[i] = F[i][s + s * edim].real() - fric_gamma[i] * p[i] + random_force[i];
+        // berry force
+        force[i] += 2.0 * (dc[i][s+(1-s)*edim] * vdotdc).imag();
     }
     p += 0.5 * dt * force;
 
@@ -272,8 +286,7 @@ int hopper(state_t& state)
         // momentum-rescaling direction: (x-direction)
         vector<double> n(ndim, 0.0);
 
-        /*
-        // Mehod #2
+        // Method #2
         const vector<double> dcR { dc[0][from+to*edim].real(), dc[1][from+to*edim].real()  };
         const vector<double> dcI { dc[0][from+to*edim].imag(), dc[1][from+to*edim].imag()  };
         const double diff_norm2 = norm2(dcR) - norm2(dcI);
@@ -289,9 +302,12 @@ int hopper(state_t& state)
         const complex<double> eieta = exp(zI * eta);
         n[0] = (eieta * dc[0][from+to*edim]).real();
         n[1] = (eieta * dc[1][from+to*edim]).real();
-        */
+
+        /*
+        // Real dc directio
         n[0] = dc[0][from+to*edim].real();
         n[1] = dc[1][from+to*edim].real();
+        */
 
         // hop
         if (norm(n) > 1e-40) {
@@ -423,7 +439,7 @@ bool check_end(const state_t& state) {
 
 void afssh_nd_mpi() {
     // potential para
-    set_potenial_params( vector<double> { mass[0], mass[1], omega[0], omega[1], g[0], g[1], dG0, V });
+    set_potenial_params( vector<double> { mass[0], mass[1], omega[0], omega[1], g[0], g[1], dG0, V, W });
 
     // assign jobs
     const vector<int> my_jobs = MPIer::assign_job(Ntraj);
@@ -630,7 +646,7 @@ int check() {
     vector<double> r(ndim, 0.0);
     int N = 500;
     vector<double> xarr = linspace(-10000.0, 15000.0, N);
-    vector<double> yarr = linspace(-8.0, 8.0, N);
+    vector<double> yarr = linspace(-10000.0, 15000.0, N);
 
     for (int ix(0); ix < N; ++ix) {
         for (int iy(0); iy < N; ++iy) {
