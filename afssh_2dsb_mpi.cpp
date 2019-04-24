@@ -461,12 +461,15 @@ void afssh_nd_mpi() {
 
     // recorders
     int Nrec = Nstep / output_step;
-    map<string, vector<double> > record {
-        { "n0d", vector<double>(Nrec, 0.0) },
-        { "n1d", vector<double>(Nrec, 0.0) },
-        { "KE", vector<double>(Nrec, 0.0) },
-        { "PE", vector<double>(Nrec, 0.0) },
+    vector<string> rec_keys { 
+        "n0d", "n1d",
+        "KE", "PE"
     };
+
+    map< string, vector<double> > record;
+    for (const auto& key : rec_keys) {
+        record[key] = vector<double>(Nrec, 0.0);
+    }
 
 
     //  ----  MAIN LOOP  ---- //
@@ -505,10 +508,12 @@ void afssh_nd_mpi() {
 
         if (istep % output_step == 0) {
             // record data
-            n0d = n1d = 0.0;
-            KE = PE = 0.0;
+            map<string, double> recinfo;
+            for (const auto& key : rec_keys) {
+                recinfo[key] = 0.0;
+            }
             for_each(state.begin(), state.end(), 
-                    [&n0d, &n1d, &KE, &PE](const state_t& st) { 
+                    [&recinfo](const state_t& st) { 
                         // extract info
                         vector< complex<double> > r(st.begin(), st.begin() + ndim);
                         vector< complex<double> > p(st.begin() + ndim, st.begin() + ndim * 2);
@@ -519,19 +524,18 @@ void afssh_nd_mpi() {
                         vector< complex<double> > U;
                         matrixop::hdiag(cal_H(real(r)), evatmp, U);
 
-                        n0d += pow(abs(U[0+s*2]), 2) + 2 * (U[0+0*2] * c[0] * conj(c[1]) * conj(U[0+1*2])).real();
-                        n1d += pow(abs(U[1+s*2]), 2) + 2 * (U[1+0*2] * c[0] * conj(c[1]) * conj(U[1+1*2])).real();
+                        recinfo["n0d"] += pow(abs(U[0+s*2]), 2) + 2 * (U[0+0*2] * c[0] * conj(c[1]) * conj(U[0+1*2])).real();
+                        recinfo["n1d"] += pow(abs(U[1+s*2]), 2) + 2 * (U[1+0*2] * c[0] * conj(c[1]) * conj(U[1+1*2])).real();
 
                         // energy
-                        KE += 0.5 * sum(pow(abs(p), 2) / mass);
-                        PE += evatmp[s]; 
+                        recinfo["KE"] += 0.5 * sum(pow(abs(p), 2) / mass);
+                        recinfo["PE"] += evatmp[s]; 
                     });
 
             const int irec = istep / output_step;
-            record["n0d"][irec] = n0d;
-            record["n1d"][irec] = n1d;
-            record["KE"][irec] = KE;
-            record["PE"][irec] = PE;
+            for (const auto& key : rec_keys) {
+                record[key][irec] = recinfo[key];
+            }
         }
     }
     MPIer::barrier();
@@ -542,17 +546,16 @@ void afssh_nd_mpi() {
 
     for (int r(1); r < MPIer::size; ++r) {
         if (MPIer::rank == r) {
-            MPIer::send(0, record["n0d"]);
-            MPIer::send(0, record["n1d"]);
-            MPIer::send(0, record["KE"]);
-            MPIer::send(0, record["PE"]);
+            for (const auto& key : rec_keys) {
+                MPIer::send(0, record[key]);
+            }
         }
         else if (MPIer::master) {
             vector<double> vbuf;
-            MPIer::recv(r, vbuf); record["n0d"] += vbuf;
-            MPIer::recv(r, vbuf); record["n1d"] += vbuf;
-            MPIer::recv(r, vbuf); record["KE"] += vbuf;
-            MPIer::recv(r, vbuf); record["PE"] += vbuf;
+            for (const auto& key : rec_keys) {
+                MPIer::recv(r, vbuf);
+                record[key] += vbuf;
+            }
         }
         MPIer::barrier();
     }
