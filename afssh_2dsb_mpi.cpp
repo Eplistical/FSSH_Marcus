@@ -43,7 +43,7 @@ int edim = 2;
 const vector<double> mass { 1.0, 1.0};
 //const vector<double> omega { 4.375e-5, 0.0};
 const vector<double> omega { 4.375e-5, 4.375e-5};
-const vector<double> g { 4997.3, 0.0};
+const vector<double> g { 4997.3, 2524.65 };
 const double kT = 9.5e-4;
 //const vector<double> fric_gamma = { 1.5e-4, 0.0 };
 const vector<double> fric_gamma = { 1.5e-4, 1.5e-4 };

@@ -8,77 +8,28 @@ import seaborn as sns
 import sys
 
 
-'''
-mass = 2000.0
-kT = 0.01
-omega = 5e-4
-g = 16.0
-dG0 = -0.002
-V = float(sys.argv[1])
-'''
-
-'''
-# Landry params
-mass = 1
-kT = 9.5e-4
-omega = 3.5e-4
-dG0 = -0.015
-V = np.exp(float(sys.argv[1]))
-Er = 0.0239
-M = np.sqrt(0.5 * Er * mass * omega**2)
-g = 2 * M / mass / omega**2 
-'''
-
-'''
-# my params
-mass = 1
-kT = 9.5e-4
-omega = 3.5e-4
-dG0 = -0.015
-V = np.exp(float(sys.argv[1]))
-Er = 0.0239
-M = np.sqrt(0.5 * Er * mass * omega**2)
-g = 2 * M / mass / omega**2 
-'''
-
 # my params
 mass = 1
 kT = 9.5e-4
 omega = 4.375e-5
-dG0 = float(sys.argv[1])
-V = 2.5e-5
-Er = 0.0239
+dG0 = -0.018
+V = np.exp(float(sys.argv[1]))
+Er = 0.0239 #0.0239
 M = np.sqrt(0.5 * Er * mass * omega**2)
 g = 2 * M / mass / omega**2 
 
 
-xb = 0.5 * g + dG0 / mass / omega**2 / g
-Eb = 0.125 * mass * omega**2 * g**2 + 0.5 * dG0 + dG0**2 / 2 / mass / omega**2 / g**2
-
-
-sigmax = np.sqrt(kT / mass / omega**2)
-sigmav = np.sqrt(kT / mass)
-
-
 print('# V = %.6f' % (V))
-print('# xb = %.6f' % (xb))
-print('# Eb = %.6f = %.6f kT' % (Eb, Eb / kT))
 print('# Er = %.6f' % Er)
-print('# sigmax = %.6f  sigmav= %.6f' % (sigmax, sigmav))
+print('# g = %.6f' % g)
 
 
 # H00 = 0.5 * mw2 * (x + 0.5g)**2 - 0.25Er
 # H11 = 0.5 * mw2 * (x - 0.5g)**2 - 0.25Er - dG0
 k_marcus = V**2 * np.sqrt(np.pi / kT / Er) * np.exp(-(Er + dG0)**2 / 4 / kT / Er)
 
-'''
-print(4 * Er * kT)
-print((Er + dG0)**2)
-print(np.exp(-(Er + dG0)**2 / 4 / kT / Er))
-print(2*np.pi / np.sqrt(4 * np.pi * Er * kT))
-'''
 
-print('%16.6f%16.6e' % (dG0, k_marcus))
+print('%16.6f%16.6f' % (np.log(V), np.log(k_marcus)))
 
 
 
@@ -114,4 +65,4 @@ plt.plot(xx, E0, '--', label='E0')
 plt.plot(xx, E1, '--', label='E1')
 
 plt.legend()
-#plt.show()
+plt.show()
