@@ -143,7 +143,7 @@ namespace {
         Hy.resize(4);
         Hy[0+0*2] = my * wy * wy * y;
         Hy[1+1*2] = my * wy * wy * (y - gy);
-        Hy[0+1*2] = V * cos(y - y0);
+        Hy[0+1*2] = V * alpha * cos(y - y0);
         Hy[1+0*2] = conj(Hy[0+1*2]);
 
         return nablaH;
