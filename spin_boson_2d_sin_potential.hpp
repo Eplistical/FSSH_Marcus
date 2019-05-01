@@ -51,8 +51,9 @@ namespace {
     using std::complex;
 
     vector<double> param_mass { 1.0, 1.0 };
-    vector<double> param_omega { 4.375e-5, 4.375e-5 };
-    vector<double> param_g { 4684.73, 0.0 };  // Er = 5000cm^-1
+    //vector<double> param_omega { 4.375e-5, 4.375e-5 };
+    vector<double> param_omega { 4.375e-5, 2e-2 };
+    vector<double> param_g { 4878.99, 0.0 }; // Er = 0.5 * m * w**2 * g**2 = 5000cm^-1
     double param_dG0 = 0.0;
     double param_V = 2.5e-5;
     double param_alpha = 0.0;

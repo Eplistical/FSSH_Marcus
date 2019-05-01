@@ -40,21 +40,20 @@ const complex<double> zI(0.0, 1.0);
 int ndim = 2;
 int edim = 2;
 
-const vector<double> mass { 1.0, 1.0};
-//const vector<double> omega { 4.375e-5, 0.0};
-const vector<double> omega { 4.375e-5, 4.375e-5};
-const vector<double> g { 4684.73, 0.0 };
-const double kT = 9.113e-4;
+const vector<double> mass { 1.0, 1.0 }; 
+//const vector<double> omega { 4.375e-5, 0.0}; 
+const vector<double> omega { 4.375e-5, 2e-2};
+const vector<double> g { 4878.99, 0.0 }; // Er = 0.5 * m * w**2 * g**2 = 5000cm^-1
+const double kT = 9.113e-4; // 200cm^-1
 const double phi0 = 0.0;
-//const vector<double> fric_gamma = { 1.5e-4, 0.0 };
-const vector<double> fric_gamma = { 1.5e-4, 1.5e-4 };
+const vector<double> fric_gamma = { 1e-4, 1e-4 };
 
 const vector<double> sigma_r { 0.0, 0.0 };
 const vector<double> sigma_p = sqrt(kT * mass);
 
 // tunable parameters
 double V = 2.5e-5;
-double dG0 = -0.0228;
+double dG0 = 0.0;
 double alpha = 0.0;
 
 vector<double> init_r { 0.0, 0.0};
@@ -516,8 +515,15 @@ void afssh_nd_mpi() {
                         vector< complex<double> > U;
                         matrixop::hdiag(cal_H(real(r)), evatmp, U);
 
+                        ioer::info(U);
+                        ioer::info(c[0]);
+                        ioer::info(c[1]);
+                        ioer::info(s);
+
                         recinfo["n0d"] += pow(abs(U[0+s*2]), 2) + 2 * (U[0+0*2] * c[0] * conj(c[1]) * conj(U[0+1*2])).real();
                         recinfo["n1d"] += pow(abs(U[1+s*2]), 2) + 2 * (U[1+0*2] * c[0] * conj(c[1]) * conj(U[1+1*2])).real();
+                        ioer::info(recinfo["n0d"]);
+                        ioer::info(recinfo["n1d"]);
 
                         // energy
                         recinfo["KE"] += 0.5 * sum(pow(abs(p), 2) / mass);
@@ -641,9 +647,9 @@ void afssh_nd_mpi() {
 
 int check() {
     vector<double> r(ndim, 0.0);
-    int N = 500;
+    int N = 100;
     vector<double> xarr = linspace(-10000.0, 15000.0, N);
-    vector<double> yarr = linspace(-10000.0, 15000.0, N);
+    vector<double> yarr = linspace(-10.0, 15.0, N);
 
     for (int ix(0); ix < N; ++ix) {
         for (int iy(0); iy < N; ++iy) {
