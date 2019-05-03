@@ -43,7 +43,7 @@ int edim = 2;
 const vector<double> mass { 1.0, 1.0};
 //const vector<double> omega { 4.375e-5, 0.0};
 const vector<double> omega { 4.375e-5, 4.375e-5};
-const vector<double> g { 4997.3, 2524.65 };
+const vector<double> g { 4997.3, 0.0 }; 
 const double kT = 9.5e-4;
 //const vector<double> fric_gamma = { 1.5e-4, 0.0 };
 const vector<double> fric_gamma = { 1.5e-4, 1.5e-4 };
@@ -67,6 +67,7 @@ int Ntraj = 2000;
 bool enable_hop = true;
 bool enable_deco = true;
 bool enable_prev = true;
+bool enable_berry_force = true;
 int seed = 0;
 
 // cache
@@ -97,6 +98,7 @@ bool argparse(int argc, char** argv)
         ("enable_hop", po::value<bool>(&enable_hop), "enable hopping")
         ("enable_deco", po::value<bool>(&enable_deco), "enable decoherence")
         ("enable_prev", po::value<bool>(&enable_prev), "enable momentum reversal")
+        ("enable_berry_force", po::value<bool>(&enable_berry_force), "enable momentum reversal")
         ("seed", po::value<decltype(seed)>(&seed), "random seed")
         ;
     po::variables_map vm; 
@@ -237,8 +239,10 @@ void integrator(state_t& state, const double dt) {
 
     for (int i(0); i < ndim; ++i) {
         force[i] = F[i][s + s * edim].real() - fric_gamma[i] * p[i] + random_force[i];
-        // berry force
-        force[i] += 2.0 * (dc[i][s+(1-s)*edim] * vdotdc).imag();
+        if (enable_berry_force) {
+            // berry force
+            force[i] += 2.0 * (dc[i][s+(1-s)*edim] * vdotdc).imag();
+        }
     }
     p += 0.5 * dt * force;
 
@@ -248,8 +252,10 @@ void integrator(state_t& state, const double dt) {
 
     for (int i(0); i < ndim; ++i) {
         force[i] = F[i][s + s * edim].real() - fric_gamma[i] * p[i] + random_force[i];
-        // berry force
-        force[i] += 2.0 * (dc[i][s+(1-s)*edim] * vdotdc).imag();
+        if (enable_berry_force) {
+            // berry force
+            force[i] += 2.0 * (dc[i][s+(1-s)*edim] * vdotdc).imag();
+        }
     }
     p += 0.5 * dt * force;
 
@@ -304,7 +310,7 @@ int hopper(state_t& state)
         n[1] = (eieta * dc[1][from+to*edim]).real();
 
         /*
-        // Real dc directio
+        // Real dc direction
         n[0] = dc[0][from+to*edim].real();
         n[1] = dc[1][from+to*edim].real();
         */
@@ -621,6 +627,7 @@ void afssh_nd_mpi() {
                     " enable_hop = ", enable_hop,
                     " enable_deco = ", enable_deco,
                     " enable_prev = ", enable_prev,
+                    " enable_berry_force = ", enable_berry_force,
                     " seed = ", seed
                 );
         ioer::info("# ln(V) = ", log(V));

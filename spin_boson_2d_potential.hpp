@@ -52,7 +52,7 @@ namespace {
 
     vector<double> param_mass { 1.0, 1.0 };
     vector<double> param_omega { 4.375e-5, 4.375e-5 };
-    vector<double> param_g { 4997.3, 2524.7 };
+    vector<double> param_g { 4997.3, 0.0 }; // Erx = 0.0239
     double param_dG0 = -0.018;
     double param_V = 2.5e-5;
     double param_W = 0.0;
